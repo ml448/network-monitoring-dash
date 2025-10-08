@@ -2,7 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from datetime import datetime
-
+from demo_devices import get_demo
 #Initialize the FastAPI app
 app = FastAPI(title="Network Monitoring API")
 
@@ -37,11 +37,7 @@ async def health():
 @app.get("/api/devices")
 async def get_devices():
     """Get demo devices"""
-    devices = [
-        {"id": "1", "name": "Router-1", "ip": "192.168.1.1", "status": "online"},
-        {"id": "2", "name": "Switch-1", "ip": "192.168.1.10", "status": "online"},
-        {"id": "3", "name": "Firewall-1", "ip": "192.168.1.2", "status": "warning"}
-    ]
+    devices = get_demo()
     return {"data": devices}
 
 @app.websocket("/ws")
