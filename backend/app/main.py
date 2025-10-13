@@ -1,8 +1,15 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from datetime import datetime
 from demo_devices import get_demo
+from websocket import ConnectionManager
+import logging 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+manager = ConnectionManager()
+
 #Initialize the FastAPI app
 app = FastAPI(title="Network Monitoring API")
 
@@ -37,13 +44,19 @@ async def health():
 @app.get("/api/devices")
 async def get_devices():
     """Get demo devices"""
-    devices = get_demo()
-    return {"data": devices}
+    try:
+        logger.info("Fetching devices...")
+        devices = get_demo()
+        logger.info(f"Returning {len(devices)} devices")
+        return {"success": True, "data": devices}
+    except Exception as e:
+        logger.error(f"Error fetching devices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
+    await manager.connect(websocket)
     
     try:
         await websocket.send_json({
@@ -55,14 +68,15 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(10)
             
             # Send demo update
+            devices = get_demo()
             await websocket.send_json({
                 "type": "update",
                 "timestamp": datetime.now().isoformat(),
-                "data": {"message": "Timely update"}
+                "data": devices
             })
             
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
+        manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn
