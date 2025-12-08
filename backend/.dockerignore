@@ -28,6 +28,15 @@ env/
 .coverage
 htmlcov/
 
+# Type checking & Linting
+.mypy_cache/
+.ruff_cache/
+.flake8_cache/
+
+# Environment variables (use docker-compose env instead)
+.env
+.env.*
+
 # Documentation
 *.md
 docs/

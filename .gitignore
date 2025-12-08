@@ -40,6 +40,7 @@ env/
 
 # Docker
 *.log
+docker-compose.override.yml
 
 # OS
 .DS_Store
@@ -47,8 +48,17 @@ Thumbs.db
 
 # Database volumes
 influxdb-data/
+influxdb-config/
 grafana-data/
 
 # Logs
 *.log
 logs/
+
+# Testing
+.pytest_cache/
+
+# Type checking & Linting
+.mypy_cache/
+.ruff_cache/
+.flake8_cache/
