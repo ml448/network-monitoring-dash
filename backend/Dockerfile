@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
-# Create non-root user and set permissions
+# Create user and set permissions
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
