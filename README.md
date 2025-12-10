@@ -3,9 +3,9 @@
 
 ## Features
 - Python backend development
-- React frontend
+- Grafana dashboard
 - Docker containerization
-- SNMP protocols
+- SNMP protocols (Currently a mock version from scratch)
 - Real-time WebSockets
 
 ## Current Status
