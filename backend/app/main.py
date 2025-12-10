@@ -25,6 +25,25 @@ manager = ConnectionManager()
 influx_client = None
 poller = None
 
+# Validate IP addresses
+def validate_ip(ip_string: str) -> str:
+    try:
+        ipaddress.ip_address(ip_string)
+        return ip_string
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid IP: {ip_string}")
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
@@ -76,6 +95,9 @@ app.add_middleware(
     allow_headers=["Content-Type"],
     max_age=600,
 )
+
+# Add security headers to all responses
+app.add_middleware(SecurityHeadersMiddleware)
 
 async def broadcast_updates():
     """Background task to broadcast device updates via WebSocket"""
@@ -149,9 +171,11 @@ async def get_devices():
 async def get_device_detail(device_ip: str):
     """Get detailed info for a specific device"""
     try:
+        device_ip = validate_ip(device_ip)
+
         if not poller:
             raise HTTPException(status_code=503, detail="Poller not initialized")
-        
+
         device_data = poller.device_data.get(device_ip)
         
         if not device_data:
@@ -169,12 +193,14 @@ async def get_device_detail(device_ip: str):
 async def get_device_history(device_ip: str, hours: int = 1):
     """Get historical metrics for a device from InfluxDB"""
     try:
+        device_ip = validate_ip(device_ip)
+
         if not influx_client or not influx_client.client:
             raise HTTPException(
-                status_code=503, 
+                status_code=503,
                 detail="InfluxDB not available. Historical data not accessible."
             )
-        
+
         history = influx_client.query_device_history(device_ip, hours)
         
         return {
