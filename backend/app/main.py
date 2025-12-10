@@ -56,16 +56,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Network Monitoring API",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None,          # Disable Swagger UI (/docs)
+    openapi_url=None,       # Disable OpenAPI schema (/openapi.json)
+    redoc_url=None          # Disable ReDoc (/redoc)
 )
 
-#CORS Permissions
+# CORS Permissions - Restrict to Grafana only
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["Content-Type"],
+    max_age=600,
 )
 
 async def broadcast_updates():
