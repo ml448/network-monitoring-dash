@@ -12,12 +12,12 @@ class ConnectionManager():
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"New WebSocket connection. Total: {len(self.active_connections)}")
-
+    
     async def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
             logger.info(f"WebSocket disconnected. Remaining: {len(self.active_connections)}")
-
+            
     async def send_message(self, message: dict, websocket: WebSocket):
         try:
             await websocket.send_json(message)
@@ -33,15 +33,15 @@ class ConnectionManager():
             except Exception as e:
                 logger.error(f"Error broadcasting: {e}")
                 disconnected.append(connection)
-
-
+    
+        
         for connection in disconnected:
             await self.disconnect(connection)
 
     def get_connection_count(self) -> int:
         """Get number of active connections"""
         return len(self.active_connections)
+        
 
-
-
+        
 

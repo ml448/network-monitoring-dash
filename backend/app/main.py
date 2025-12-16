@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
@@ -48,24 +48,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     global influx_client, poller
-
+    
     # Startup
     logger.info("Starting Network Monitoring API...")
-
+    
     # Initialize InfluxDB client
     influx_client = InfluxClient()
-
+    
     # Initialize and start poller
     poller = SNMPPoller(influx_client=influx_client)
     poller.start()
-
+    
     logger.info("Application started successfully")
-
+    
     # Background task to broadcast updates
     asyncio.create_task(broadcast_updates())
-
+    
     yield
-
+    
     # Shutdown
     logger.info("🛑 Shutting down...")
     if poller:
@@ -104,7 +104,7 @@ async def broadcast_updates():
     while True:
         try:
             await asyncio.sleep(10)
-
+            
             if poller and manager.get_connection_count() > 0:
                 devices = poller.get_all_devices()
                 await manager.broadcast_connection({
@@ -112,7 +112,7 @@ async def broadcast_updates():
                     "timestamp": datetime.now().isoformat(),
                     "data": list(devices.values())
                 })
-
+                
         except Exception as e:
             logger.error(f"Error in broadcast_updates: {e}")
 
@@ -141,8 +141,8 @@ async def health():
         "poller_running": poller.running if poller else False,
         "influxdb_connected": influx_client.client is not None if influx_client else False,
         "websocket_connections": manager.get_connection_count()
-    }
-
+    }    
+    
 
 @app.get("/api/devices")
 async def get_devices():
@@ -159,14 +159,14 @@ async def get_devices():
                 devices = get_demo()
             else:
                 devices = list(devices_dict.values())
-
+        
         logger.info(f"Returning {len(devices)} devices")
         return {"success": True, "data": devices, "count": len(devices)}
-
+        
     except Exception as e:
         logger.error(f"Error fetching devices: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
 @app.get("/api/devices/{device_ip}")
 async def get_device_detail(device_ip: str):
     """Get detailed info for a specific device"""
@@ -177,20 +177,23 @@ async def get_device_detail(device_ip: str):
             raise HTTPException(status_code=503, detail="Poller not initialized")
 
         device_data = poller.device_data.get(device_ip)
-
+        
         if not device_data:
             raise HTTPException(status_code=404, detail=f"Device {device_ip} not found")
-
+        
         return {"success": True, "data": device_data}
-
+        
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching device {device_ip}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
 @app.get("/api/devices/{device_ip}/history")
-async def get_device_history(device_ip: str, hours: int = 1):
+async def get_device_history(
+    device_ip: str,
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1
+):
     """Get historical metrics for a device from InfluxDB"""
     try:
         device_ip = validate_ip(device_ip)
@@ -215,12 +218,12 @@ async def get_device_history(device_ip: str, hours: int = 1):
         raise
     except Exception as e:
         logger.error(f"Error fetching history for {device_ip}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-
+    
     try:
         # Send initial connection message
         await websocket.send_json({
@@ -228,7 +231,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "message": "WebSocket connected",
             "timestamp": datetime.now().isoformat()
         })
-
+        
         # Send current device data immediately
         if poller:
             devices = poller.get_all_devices()
@@ -237,12 +240,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 "timestamp": datetime.now().isoformat(),
                 "data": list(devices.values())
             })
-
+        
         # Keep connection alive and wait for messages
         while True:
             data = await websocket.receive_text()
             logger.info(f"Received message from client: {data}")
-
+            
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logger.info("WebSocket disconnected")
