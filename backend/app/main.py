@@ -9,9 +9,10 @@ from .poller import SNMPPoller
 from .influx_client import InfluxClient
 from .websocket import ConnectionManager
 import logging
-import ipaddress
 import os
 from dotenv import load_dotenv
+from typing import Annotated
+import ipaddress
 
 # Load environment variables
 load_dotenv()
