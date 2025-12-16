@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.base import BaseHTTPMiddleware
 import asyncio
@@ -11,7 +11,7 @@ from .websocket import ConnectionManager
 import logging
 import os
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Annotated
 import ipaddress
 
 # Load environment variables
@@ -165,7 +165,7 @@ async def get_devices():
         
     except Exception as e:
         logger.error(f"Error fetching devices: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/api/devices/{device_ip}")
 async def get_device_detail(device_ip: str):
@@ -187,10 +187,13 @@ async def get_device_detail(device_ip: str):
         raise
     except Exception as e:
         logger.error(f"Error fetching device {device_ip}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/api/devices/{device_ip}/history")
-async def get_device_history(device_ip: str, hours: int = 1):
+async def get_device_history(
+    device_ip: str,
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1
+):
     """Get historical metrics for a device from InfluxDB"""
     try:
         device_ip = validate_ip(device_ip)
@@ -202,7 +205,7 @@ async def get_device_history(device_ip: str, hours: int = 1):
             )
 
         history = influx_client.query_device_history(device_ip, hours)
-        
+
         return {
             "success": True,
             "device_ip": device_ip,
@@ -210,12 +213,12 @@ async def get_device_history(device_ip: str, hours: int = 1):
             "data": history,
             "count": len(history)
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching history for {device_ip}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

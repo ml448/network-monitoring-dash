@@ -1,9 +1,10 @@
 import os
+import re
 import logging
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -88,23 +89,41 @@ class InfluxClient:
         except Exception as e:
             logger.error(f"Error writing to InfluxDB: {e}")
     
-    def query_device_history(self, device_ip: str, hours: int = 1):
+    def _sanitize_flux_string(self, value: str) -> str:
+        """Sanitize string for safe use in Flux queries by escaping special characters"""
+        # Escape backslashes first, then quotes
+        value = value.replace("\\", "\\\\")
+        value = value.replace('"', '\\"')
+        # Remove any Flux injection attempts (pipe operators, parentheses)
+        if re.search(r'[|>(){}\[\]]', value):
+            raise ValueError(f"Invalid characters in query parameter: {value}")
+        return value
+
+    def query_device_history(self, device_ip: str, hours: int = 1) -> List[Dict[str, Any]]:
         """Query historical data for a device"""
         if not self.client:
             return []
-        
+
+        # Validate and constrain hours parameter (1 hour to 7 days max)
+        if not isinstance(hours, int) or hours < 1:
+            hours = 1
+        hours = min(hours, 168)  # Cap at 7 days
+
         try:
+            # Sanitize device_ip to prevent Flux injection
+            safe_device_ip = self._sanitize_flux_string(device_ip)
+
             query = f'''
             from(bucket: "{self.bucket}")
                 |> range(start: -{hours}h)
                 |> filter(fn: (r) => r["_measurement"] == "device_metrics")
-                |> filter(fn: (r) => r["device_ip"] == "{device_ip}")
+                |> filter(fn: (r) => r["device_ip"] == "{safe_device_ip}")
                 |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
             '''
-            
+
             query_api = self.client.query_api()
             result = query_api.query(org=self.org, query=query)
-            
+
             data = []
             for table in result:
                 for record in table.records:
@@ -116,9 +135,12 @@ class InfluxClient:
                         "bandwidth_out": record.values.get("bandwidth_out"),
                         "response_time": record.values.get("response_time"),
                     })
-            
+
             return data
-            
+
+        except ValueError as e:
+            logger.warning(f"Invalid query parameter: {e}")
+            return []
         except Exception as e:
             logger.error(f"Error querying InfluxDB: {e}")
             return []
