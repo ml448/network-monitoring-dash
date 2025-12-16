@@ -1,6 +1,6 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -11,7 +11,7 @@ from .websocket import ConnectionManager
 import logging
 import os
 from dotenv import load_dotenv
-from typing import Optional, Annotated
+from typing import Annotated
 import ipaddress
 
 # Load environment variables
