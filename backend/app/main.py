@@ -79,12 +79,12 @@ app = FastAPI(
     title="Network Monitoring API",
     version="0.1.0",
     lifespan=lifespan,
-    docs_url=None,          # Disable Swagger UI (/docs)
-    openapi_url=None,       # Disable OpenAPI schema (/openapi.json)
-    redoc_url=None          # Disable ReDoc (/redoc)
+    docs_url=None,          
+    openapi_url=None,       
+    redoc_url=None          
 )
 
-# CORS Permissions - Restrict to Grafana only
+# CORS Permissions
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
