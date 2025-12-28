@@ -38,6 +38,9 @@ services:
       - INFLUXDB_ORG=${INFLUXDB_ORG}
       - INFLUXDB_BUCKET=${INFLUXDB_BUCKET}
       - SNMP_COMMUNITY=${SNMP_COMMUNITY}
+      - SNMP_TIMEOUT=${SNMP_TIMEOUT}
+      - SNMP_RETRIES=${SNMP_RETRIES}
+      - SNMP_POLL_INTERVAL=${SNMP_POLL_INTERVAL}
       - DEMO_MODE=${DEMO_MODE}
     volumes:
       - ./backend/app:/app/app

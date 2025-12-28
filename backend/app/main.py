@@ -5,7 +5,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 from .demo_devices import get_demo
-from .poller import SNMPPoller
+from .snmp_poller import RealSNMPPoller
 from .influx_client import InfluxClient
 from .websocket import ConnectionManager
 import logging
@@ -13,9 +13,11 @@ import os
 from dotenv import load_dotenv
 from typing import Annotated
 import ipaddress
+from pathlib import Path
 
 # Load environment variables
-load_dotenv()
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +26,41 @@ logger = logging.getLogger(__name__)
 manager = ConnectionManager()
 influx_client = None
 poller = None
+
+def get_int_env(key: str, default: int, min_val: int = None, max_val: int = None) -> int:
+    raw_value = os.getenv(key)
+    try:
+        result = int(raw_value)
+    except (ValueError, TypeError):
+        result = default
+        logger.warning(f"Could not convert {key}, using default value {default}")
+    
+    # Check minimum bound
+    if min_val is not None and result < min_val:
+        original_value = result
+        result = min_val
+        logger.warning(f"{key} value {original_value} below minimum {min_val}, using {min_val}")
+    
+    # Check maximum bound
+    if max_val is not None and result > max_val:
+        original_value = result
+        result = max_val
+        logger.warning(f"{key} value {original_value} above maximum {max_val}, using {max_val}")
+    
+    return result
+
+def get_required_env(key: str, allow_empty: bool = False) -> str:
+    value = os.getenv(key)
+    
+    # Check if variable doesn't exist at all
+    if value is None:
+        raise ValueError(f"Required environment variable '{key}' is not set")   
+    value = value.strip()
+
+    # Check if it's empty (and if that's not allowed)
+    if not value and not allow_empty:
+        raise ValueError(f"Required environment variable '{key}' is empty")
+    return value
 
 # Validate IP addresses
 def validate_ip(ip_string: str) -> str:
@@ -55,8 +92,15 @@ async def lifespan(app: FastAPI):
     # Initialize InfluxDB client
     influx_client = InfluxClient()
     
-    # Initialize and start poller
-    poller = SNMPPoller(influx_client=influx_client)
+    # Initialize and start poller with secure environment validation
+    poller = RealSNMPPoller(
+        influx_client=influx_client,
+        community=get_required_env("SNMP_COMMUNITY"),
+        timeout=get_int_env("SNMP_TIMEOUT", default=2, min_val=1, max_val=30),
+        retries=get_int_env("SNMP_RETRIES", default=3, min_val=0, max_val=5),
+        poll_interval=get_int_env("SNMP_POLL_INTERVAL", default=60, min_val=10, max_val=3600)
+    )
+    
     poller.start()
     
     logger.info("Application started successfully")
@@ -67,12 +111,12 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("🛑 Shutting down...")
+    logger.info(" Shutting down...")
     if poller:
         poller.stop()
     if influx_client:
         influx_client.close()
-    logger.info("✅ Shutdown complete")
+    logger.info(" Shutdown complete")
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -255,7 +299,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT"))
+    port = int(os.getenv("PORT", "8000"))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
