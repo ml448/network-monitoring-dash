@@ -93,10 +93,6 @@ CISCO = {
 
 
 def get_basic_oids() -> dict:
-    """
-    Returns the minimum set of OIDs to poll for any device.
-    These are universally supported across vendors.
-    """
     return {
         "sysDescr": SYSTEM["sysDescr"],
         "sysUpTime": SYSTEM["sysUpTime"],
@@ -105,12 +101,6 @@ def get_basic_oids() -> dict:
 
 
 def get_interface_oids(if_index: int = 1) -> dict:
-    """
-    Returns OIDs for a specific interface.
-
-    Args:
-        if_index: Interface index (usually starts at 1)
-    """
     return {
         "ifDescr": f"{INTERFACES['ifDescr']}.{if_index}",
         "ifOperStatus": f"{INTERFACES['ifOperStatus']}.{if_index}",
