@@ -1,6 +1,3 @@
-"""
-Real SNMP Poller - Replacement for the mock poller with actual SNMP queries using pysnmp.
-"""
 import asyncio
 import logging
 import time
@@ -32,8 +29,16 @@ from .influx_client import InfluxClient
 from .demo_devices import get_demo
 
 logger = logging.getLogger("RealSNMPPoller")
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+DEVICE_COMMUNITIES = {
+    "Router-main": "router-main",
+    "Switch-3rdfloor": "switch-3rdfloor",
+    "Firewall-primary": "firewall-primary",
+    "Server-web01": "server-web01",
+    "Accesspoint-floor2": "accesspoint-floor2",
+    "Switch-backup": "switch-backup",
+}
 
 class RealSNMPPoller:
 
@@ -75,7 +80,7 @@ class RealSNMPPoller:
         self.running = True
         self.thread = Thread(target=self._run_async_loop, daemon=True)
         self.thread.start()
-        logger.info(" SNMP Poller started")
+        logger.info("✓ SNMP Poller started")
 
     def stop(self):
         """Stop the polling thread gracefully."""
@@ -85,7 +90,7 @@ class RealSNMPPoller:
             self.loop.call_soon_threadsafe(self._shutdown_loop)
         if self.thread:
             self.thread.join(timeout=10)
-        logger.info(" SNMP Poller stopped")
+        logger.info("✓ SNMP Poller stopped")
 
     def _shutdown_loop(self):
         # Get all tasks except the current one
@@ -127,10 +132,24 @@ class RealSNMPPoller:
         tasks = [self._poll_device(device) for device in devices]
         await asyncio.gather(*tasks, return_exceptions=True)
 
+    def _parse_ip_port(self, ip_string: str) -> tuple[str, int]:
+        # Parse IP:port format, returns (ip, port). Defaults to port 161
+        if ":" in ip_string:
+            ip, port_str = ip_string.rsplit(":", 1)
+            try:
+                return ip, int(port_str)
+            except ValueError:
+                return ip_string, 161
+        return ip_string, 161
+
     async def _poll_device(self, device: Dict[str, Any]):
         """Poll a single device for SNMP data."""
-        dev_ip = device["ip"]
-        dev_name = device.get("name", dev_ip)
+        dev_ip_raw = device["ip"]
+        dev_ip, dev_port = self._parse_ip_port(dev_ip_raw)
+        dev_name = device.get("name", dev_ip_raw)
+        dev_community = DEVICE_COMMUNITIES.get(dev_name, self.community)
+
+        logger.info(f"Polling {dev_name} at {dev_ip}:{dev_port} with community '{dev_community}'")
 
         try:
             # Measure response time
@@ -145,14 +164,18 @@ class RealSNMPPoller:
                     "sysName": SYSTEM["sysName"],
                     "sysLocation": SYSTEM["sysLocation"],
                 },
+                port=dev_port,
+                community=dev_community,
             )
+
+            logger.info(f"SNMP response received: {list(snmp_data.keys())}")
 
             response_time = round((time.time() - start_time) * 1000, 2)  # ms
 
             # Query additional metrics (CPU, memory, bandwidth)
-            snmp_data["cpu_usage"] = await self._get_cpu_usage(dev_ip)
-            snmp_data["mem_usage"] = await self._get_memory_usage(dev_ip)
-            bandwidth = await self._get_bandwidth(dev_ip)
+            snmp_data["cpu_usage"] = await self._get_cpu_usage(dev_ip, port=dev_port, community=dev_community)
+            snmp_data["mem_usage"] = await self._get_memory_usage(dev_ip, port=dev_port, community=dev_community)
+            bandwidth = await self._get_bandwidth(dev_ip, port=dev_port, community=dev_community)
             snmp_data["bandwidth_in"] = bandwidth["bandwidth_in"]
             snmp_data["bandwidth_out"] = bandwidth["bandwidth_out"]
 
@@ -171,17 +194,17 @@ class RealSNMPPoller:
             }
 
             # Store in memory
-            self.device_data[dev_ip] = device_update
+            self.device_data[dev_ip_raw] = device_update
 
             # Write to InfluxDB
             if self.influx_client:
                 self.influx_client.write_metrics(device_update)
 
-            logger.debug(f"Polled {dev_name} ({dev_ip}): {status} in {response_time}ms")
+            logger.debug(f"Polled {dev_name} ({dev_ip_raw}): {status} in {response_time}ms")
 
         except Exception as e:
-            logger.error(f"Error polling {dev_name} ({dev_ip}): {e}")
-            self.device_data[dev_ip] = {
+            logger.error(f"Error polling {dev_name} ({dev_ip_raw}): {e}")
+            self.device_data[dev_ip_raw] = {
                 **device,
                 "status": "Error",
                 "metrics": {},
@@ -189,21 +212,13 @@ class RealSNMPPoller:
                 "error": str(e),
             }
 
+    # Query multiple OIDs from a device
     async def _snmp_get_multi(
-        self, ip: str, oids: Dict[str, str], port: int = 161
+        self, ip: str, oids: Dict[str, str], port: int = 161, community: str = None
     ) -> Dict[str, Any]:
-        """
-        Query multiple OIDs from a device.
-
-        Args:
-            ip: Device IP address
-            oids: Dictionary of {name: oid_string}
-            port: SNMP port (default 161)
-
-        Returns:
-            Dictionary of {name: converted_value}
-        """
         try:
+            comm_str = community if community is not None else self.community
+            
             # Create transport target
             transport = await UdpTransportTarget.create(
                 (ip, port), timeout=self.timeout, retries=self.retries
@@ -217,7 +232,7 @@ class RealSNMPPoller:
                 error_indication, error_status, error_index, var_binds = await asyncio.wait_for(
                     get_cmd(
                         SnmpEngine(),
-                        CommunityData(self.community),
+                        CommunityData(comm_str), 
                         transport,
                         ContextData(),
                         *oid_objects,
@@ -225,6 +240,7 @@ class RealSNMPPoller:
                     timeout=self.timeout * (self.retries + 1)  # Total timeout
                 )
             except asyncio.TimeoutError:
+                #Returns: Dictionary of {name: converted_value}
                 return {}
 
             # Handle errors
@@ -247,25 +263,27 @@ class RealSNMPPoller:
             return {}
 
     async def _snmp_walk(
-        self, ip: str, base_oid: str, port: int = 161
+        self, ip: str, base_oid: str, port: int = 161, community: str = None
     ) -> List[tuple]:
         #SNMP WALK operation - iterate through OID tree starting at base_oid
         results = []
         try:
+            comm_str = community if community is not None else self.community
+
             transport = await UdpTransportTarget.create(
                 (ip, port), timeout=self.timeout, retries=self.retries
             )
 
             # Use next_cmd to iterate through OID tree
             current_oid = ObjectIdentity(base_oid)
-            max_iterations = 100  # Safety limit
+            max_iterations = 100
 
-            for _ in range(max_iterations):
+            for iteration in range(max_iterations):
                 try:
                     error_indication, error_status, error_index, var_binds = await asyncio.wait_for(
                         next_cmd(
                             SnmpEngine(),
-                            CommunityData(self.community),
+                            CommunityData(comm_str),
                             transport,
                             ContextData(),
                             ObjectType(current_oid),
@@ -273,15 +291,21 @@ class RealSNMPPoller:
                         timeout=self.timeout * (self.retries + 1)
                     )
                 except asyncio.TimeoutError:
+                    logger.debug(f"WALK timeout at iteration {iteration} for {ip}:{port} base_oid={base_oid}")
                     break
 
-                if error_indication or error_status:
+                if error_indication:
+                    logger.debug(f"WALK error_indication at iteration {iteration}: {error_indication}")
+                    break
+                if error_status:
+                    logger.debug(f"WALK error_status at iteration {iteration}: {error_status.prettyPrint()}")
                     break
 
                 for oid, value in var_binds:
                     oid_str = str(oid)
                     # Stop if we've left the base OID subtree
                     if not oid_str.startswith(base_oid):
+                        logger.debug(f"WALK stopped at iteration {iteration}: {oid_str} not under {base_oid}")
                         return results
 
                     results.append((oid_str, convert_snmp_value(value)))
@@ -292,108 +316,76 @@ class RealSNMPPoller:
 
         return results
 
-    async def _get_cpu_usage(self, ip: str) -> float:
-        """
-        Query CPU usage from HOST-RESOURCES-MIB hrProcessorLoad table.
-
-        Walks OID 1.3.6.1.2.1.25.3.3.1.2 to get all processor loads,
-        then calculates the average CPU percentage across all cores.
-
-        Returns:
-            Average CPU percentage (0-100), or 0.0 if unsupported/error
-        """
+    async def _get_cpu_usage(self, ip: str, port: int = 161, community: str = None) -> float:
         try:
-            # Walk hrProcessorLoad table
-            cpu_loads = await self._snmp_walk(ip, HOST_RESOURCES["hrProcessorLoad"])
+            # Query hrProcessorLoad for CPU indices 1-8
+            cpu_base = HOST_RESOURCES["hrProcessorLoad"]
+            cpu_oids = {f"cpu_{i}": f"{cpu_base}.{i}" for i in range(1, 9)}
 
-            if not cpu_loads:
+            cpu_data = await self._snmp_get_multi(
+                ip,
+                cpu_oids,
+                port=port,
+                community=community,
+            )
+
+            # Filter valid numeric CPU values
+            cpu_values = [v for v in cpu_data.values() if isinstance(v, (int, float)) and v >= 0]
+
+            if not cpu_values:
                 return 0.0
 
             # Calculate average across all processors
-            total = sum(value for _, value in cpu_loads if isinstance(value, (int, float)))
-            avg_cpu = total / len(cpu_loads) if cpu_loads else 0.0
-
+            avg_cpu = sum(cpu_values) / len(cpu_values)
             return round(avg_cpu, 2)
 
         except Exception as e:
             logger.debug(f"Failed to get CPU usage for {ip}: {e}")
             return 0.0
-
-    async def _get_memory_usage(self, ip: str) -> float:
-        """
-        Query memory usage from HOST-RESOURCES-MIB hrStorage tables.
-
-        Walks hrStorageDescr to find RAM entries, then queries allocation units,
-        size, and used blocks to calculate percentage.
-
-        Returns:
-            Memory usage percentage (0-100), or 0.0 if unsupported/error
-        """
+        
+    async def _get_memory_usage(self, ip: str, port: int = 161, community: str = None) -> float:
         try:
-            # Walk storage descriptions to find RAM
-            storage_descrs = await self._snmp_walk(ip, HOST_RESOURCES["hrStorageDescr"])
-
-            if not storage_descrs:
-                return 0.0
-
-            # Find RAM indices (look for "Physical Memory", "RAM", "Real Memory")
-            ram_indices = []
-            for oid_str, descr in storage_descrs:
-                if isinstance(descr, str):
-                    descr_lower = descr.lower()
-                    if any(term in descr_lower for term in ["physical memory", "ram", "real memory"]):
-                        # Extract index from OID (last number)
-                        idx = oid_str.split(".")[-1]
-                        ram_indices.append(idx)
-
-            if not ram_indices:
-                return 0.0
-
-            # Query size and used for first RAM entry found
-            idx = ram_indices[0]
+            # Direct query for memory at index 1 (bypass walk issues with simulator)
+            idx = "1"
+        
             storage_data = await self._snmp_get_multi(
                 ip,
                 {
-                    "allocationUnits": f"{HOST_RESOURCES['hrStorageAllocationUnits']}.{idx}",
-                    "size": f"{HOST_RESOURCES['hrStorageSize']}.{idx}",
-                    "used": f"{HOST_RESOURCES['hrStorageUsed']}.{idx}",
+                    "allocationUnits": f"1.3.6.1.2.1.25.2.3.1.4.{idx}",
+                    "size": f"1.3.6.1.2.1.25.2.3.1.5.{idx}",
+                    "used": f"1.3.6.1.2.1.25.2.3.1.6.{idx}",
                 },
+                port=port,
+                community=community,
             )
-
+        
             if not storage_data:
+                logger.debug(f"No memory data for {ip}")
                 return 0.0
-
+        
             alloc_units = storage_data.get("allocationUnits", 0)
             total_blocks = storage_data.get("size", 0)
             used_blocks = storage_data.get("used", 0)
-
-            if total_blocks == 0 or alloc_units == 0:
+        
+            if total_blocks == 0:
+                logger.debug(f"Invalid memory total for {ip}: {total_blocks}")
                 return 0.0
-
-            # Calculate percentage: (used * units) / (total * units) * 100
+        
             mem_percent = (used_blocks / total_blocks) * 100
             return round(mem_percent, 2)
-
+        
         except Exception as e:
             logger.debug(f"Failed to get memory usage for {ip}: {e}")
             return 0.0
 
-    async def _get_bandwidth(self, ip: str, if_index: int = 1) -> Dict[str, float]:
-        """
-        Calculate bandwidth rate for specified interface.
-
-        Queries ifInOctets and ifOutOctets, compares with previous poll,
-        and calculates bytes/sec converted to Mbps.
-
-        Args:
-            ip: Device IP address
-            if_index: Interface index (default 1)
-
-        Returns:
-            Dict with bandwidth_in and bandwidth_out in Mbps
-        """
+    # Calculate bandwidth rate for specified interface
+    async def _get_bandwidth(self, ip: str, if_index: int = 1, port: int = 161, community: str = None) -> Dict[str, float]:
         try:
             current_time = time.time()
+
+            #ip:port format as device key
+            device_key = f"{ip}:{port}"
+
 
             # Query current interface counters
             counters = await self._snmp_get_multi(
@@ -402,6 +394,8 @@ class RealSNMPPoller:
                     "ifInOctets": f"{INTERFACES['ifInOctets']}.{if_index}",
                     "ifOutOctets": f"{INTERFACES['ifOutOctets']}.{if_index}",
                 },
+                port=port,
+                community=community,
             )
 
             if not counters:
@@ -409,12 +403,13 @@ class RealSNMPPoller:
 
             in_octets = counters.get("ifInOctets", 0)
             out_octets = counters.get("ifOutOctets", 0)
+            logger.debug(f"Bandwidth counters for {ip}:{port} - in: {in_octets} (type: {type(in_octets).__name__}), out: {out_octets} (type: {type(out_octets).__name__})")
 
             # Get previous counters for this device
-            prev = self.previous_counters.get(ip)
+            prev = self.previous_counters.get(device_key)
 
             # Store current counters for next poll
-            self.previous_counters[ip] = {
+            self.previous_counters[device_key] = {
                 "timestamp": current_time,
                 "ifInOctets": in_octets,
                 "ifOutOctets": out_octets,
@@ -443,10 +438,11 @@ class RealSNMPPoller:
             # Convert to Mbps: (bytes/sec) * 8 / 1,000,000
             bandwidth_in = (in_delta / time_delta) * 8 / 1_000_000
             bandwidth_out = (out_delta / time_delta) * 8 / 1_000_000
-
+            
+            # Returns: Dict with bandwidth_in and bandwidth_out in Mbps
             return {
-                "bandwidth_in": round(bandwidth_in, 3),
-                "bandwidth_out": round(bandwidth_out, 3),
+                "bandwidth_in": round(bandwidth_in, 2),
+                "bandwidth_out": round(bandwidth_out, 2),
             }
 
         except Exception as e:
@@ -477,8 +473,6 @@ class RealSNMPPoller:
                 return "Warning"
     
         return "Online"
-
-
 
 
     def _build_metrics(

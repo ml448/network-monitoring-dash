@@ -9,7 +9,7 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 class InfluxClient:
-    """Writes device metrics to InfluxDB"""
+    # Writes device metrics to InfluxDB
     
     def __init__(self):
         self.url = os.getenv("INFLUXDB_URL")

@@ -1,64 +1,58 @@
+import os
+
+# Use host.docker.internal for Docker containers to reach host machine
+# Fall back to localhost for local development
+SNMP_HOST = os.getenv("SNMP_SIMULATOR_HOST", "host.docker.internal")
+
+
 def get_demo():
-    """Returns list of demo network devices"""
     return [
         {
             "id": "001",
             "name": "Router-main",
-            "ip": "142.62.147.56",
+            "ip": f"{SNMP_HOST}:11610",
             "type": "router",
-            "status": "Online",
-            "metrics": {
-                "cpu_usage": 42.1,
-                "mem_usage": 63.7
-            }
-        },
-        {
-            "id": "010",
-            "name": "Switch-3rdFloor",
-            "ip": "234.218.156.241",
-            "type": "switch",
-            "status": "Offline",
-            "metrics": None
+            "status": "Unknown",
+            "metrics": {}
         },
         {
             "id": "002",
-            "name": "Firewall-Primary",
-            "ip": "192.168.1.1",
-            "type": "firewall",
-            "status": "Online",
-            "metrics": {
-                "cpu_usage": 28.4,
-                "mem_usage": 45.2
-            }
+            "name": "Switch-3rdfloor",
+            "ip": f"{SNMP_HOST}:11620",
+            "type": "switch",
+            "status": "Unknown",
+            "metrics": {}
         },
         {
             "id": "003",
-            "name": "Server-Web01",
-            "ip": "10.0.0.15",
+            "name": "Firewall-primary",
+            "ip": f"{SNMP_HOST}:11630",
+            "type": "firewall",
+            "status": "Unknown",
+            "metrics": {}
+        },
+        {
+            "id": "004",
+            "name": "Server-web01",
+            "ip": f"{SNMP_HOST}:11640",
             "type": "server",
-            "status": "Online",
-            "metrics": {
-                "cpu_usage": 67.8,
-                "mem_usage": 81.3
-            }
+            "status": "Unknown",
+            "metrics": {}
+        },
+        {
+            "id": "005",
+            "name": "Accesspoint-floor2",
+            "ip": f"{SNMP_HOST}:11650",
+            "type": "accesspoint",
+            "status": "Unknown",
+            "metrics": {}
         },
         {
             "id": "006",
-            "name": "AccessPoint-Floor2",
-            "ip": "192.168.2.20",
-            "type": "access_point",
-            "status": "Online",
-            "metrics": {
-                "cpu_usage": 15.2,
-                "mem_usage": 32.1
-            }
-        },
-        {
-            "id": "008",
-            "name": "Switch-Backup",
-            "ip": "172.16.2.50",
+            "name": "Switch-backup",
+            "ip": f"{SNMP_HOST}:11660",
             "type": "switch",
-            "status": "Maintenance",
-            "metrics": None
-        }
+            "status": "Unknown",
+            "metrics": {}
+        },
     ]
