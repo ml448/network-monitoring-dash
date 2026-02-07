@@ -126,7 +126,7 @@ class RealSNMPPoller:
 
     async def _poll_all_devices(self):
         """Poll all configured devices concurrently."""
-        devices = get_demo()  # TODO: Replace with database query
+        devices = get_demo()
 
         # Poll all devices concurrently using asyncio.gather
         tasks = [self._poll_device(device) for device in devices]
