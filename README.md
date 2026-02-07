@@ -38,7 +38,7 @@ A real-time dashboard for keeping an eye on network devices. Built this to learn
    INFLUXDB_BUCKET=network-metrics
    ```
 
-2. Fire it up:
+2. Start it up:
    ```bash
    cd backend
    pip install -r requirements.txt
@@ -54,13 +54,6 @@ A real-time dashboard for keeping an eye on network devices. Built this to learn
 - `GET /api/devices/{ip}/history?hours=24` - Historical data
 - `WebSocket /ws` - Real-time updates
 
-## What's Next
-
-- [ ] Database-backed device management (currently hardcoded demo devices)
-- [ ] Alerting when devices go down
-- [ ] More Grafana dashboards and panels
-- [ ] Better error handling and logging
-
 ## Notes
 
 - Using pysnmp
@@ -70,4 +63,4 @@ A real-time dashboard for keeping an eye on network devices. Built this to learn
 
 ## Current Status
 
-🟢 **Core functionality working!** The SNMP polling is live and storing metrics in InfluxDB. Grafana dashboards are visualizing the data in real-time.
+**Core functionality working!** The SNMP polling is live and storing metrics in InfluxDB. Grafana dashboards are visualizing the data in real-time.
