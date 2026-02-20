@@ -1,19 +1,23 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+import asyncio
+import logging
+import os
+import ipaddress
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 from .demo_devices import get_demo
 from .snmp_poller import RealSNMPPoller
 from .influx_client import InfluxClient
 from .websocket import ConnectionManager
-import logging
-import os
+from .database import create_tables
+from .routers import endpoint_auth
 from dotenv import load_dotenv
 from typing import Annotated
-import ipaddress
 from pathlib import Path
+from .auth.dependencies import get_current_active_user
+from app.models.user import User
 
 # Load environment variables
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -85,9 +89,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     global influx_client, poller
-    
+
     # Startup
     logger.info("Starting Network Monitoring API...")
+
+    # Create database tables (for auth)
+    await create_tables()
+    logger.info("Database tables created")
     
     # Initialize InfluxDB client
     influx_client = InfluxClient()
@@ -129,22 +137,25 @@ app = FastAPI(
 )
 
 # CORS Permissions
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS").split(",")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET"],
-    allow_headers=["Content-Type"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
     max_age=600,
 )
 
 # Add security headers to all responses
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Add auth endpoints
+app.include_router(endpoint_auth.router)
+
 async def broadcast_updates():
-    """Background task to broadcast device updates via WebSocket"""
+    #Background task to broadcast device updates via WebSocket
     while True:
         try:
             await asyncio.sleep(10)
@@ -162,7 +173,7 @@ async def broadcast_updates():
 
 @app.get("/")
 async def root():
-    """API root"""
+    # API root
     return {
         "message": "Network Monitoring API",
         "status": "running",
@@ -178,7 +189,7 @@ async def root():
 
 @app.get("/api/health")
 async def health():
-    """Health Check"""
+    # Health Check
     return {
         "status": "ok",
         "timestamp":datetime.now().isoformat(),
@@ -189,8 +200,8 @@ async def health():
     
 
 @app.get("/api/devices")
-async def get_devices():
-    """Get all devices with current status"""
+async def get_devices(current_user: User = Depends(get_current_active_user)):
+    # Get all devices with current status
     try:
         if not poller:
             # Fallback to demo data if poller not initialized
@@ -212,7 +223,7 @@ async def get_devices():
         raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/api/devices/{device_ip}")
-async def get_device_detail(device_ip: str):
+async def get_device_detail(device_ip: str, current_user: User = Depends(get_current_active_user)):
     """Get detailed info for a specific device"""
     try:
         device_ip = validate_ip(device_ip)
@@ -236,7 +247,8 @@ async def get_device_detail(device_ip: str):
 @app.get("/api/devices/{device_ip}/history")
 async def get_device_history(
     device_ip: str,
-    hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1,
+    current_user: User = Depends(get_current_active_user)
 ):
     """Get historical metrics for a device from InfluxDB"""
     try:

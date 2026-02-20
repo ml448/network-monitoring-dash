@@ -51,6 +51,9 @@ influxdb-data/
 influxdb-config/
 grafana-data/
 
+# SQLite database
+*.db
+
 # Logs
 *.log
 logs/
