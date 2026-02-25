@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import ipaddress
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
@@ -18,6 +18,8 @@ from typing import Annotated
 from pathlib import Path
 from .auth.dependencies import get_current_active_user
 from app.models.user import User
+from slowapi.errors import RateLimitExceeded
+from .ratelimit import limiter, RateLimit, rate_limit_handler
 
 # Load environment variables
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -139,6 +141,10 @@ app = FastAPI(
 # CORS Permissions
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS").split(",")
 
+#Add rate limiter 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -172,7 +178,8 @@ async def broadcast_updates():
             logger.error(f"Error in broadcast_updates: {e}")
 
 @app.get("/")
-async def root():
+@limiter.limit(RateLimit.ROOT_LIMIT)
+async def root(request: Request, response: Response):
     # API root
     return {
         "message": "Network Monitoring API",
@@ -188,7 +195,8 @@ async def root():
     }
 
 @app.get("/api/health")
-async def health():
+@limiter.limit(RateLimit.HEALTH_LIMIT)
+async def health(request: Request, response: Response):
     # Health Check
     return {
         "status": "ok",
@@ -200,7 +208,8 @@ async def health():
     
 
 @app.get("/api/devices")
-async def get_devices(current_user: User = Depends(get_current_active_user)):
+@limiter.limit(RateLimit.DEVICES_LIMIT, key_func=RateLimit.get_user_or_ip)
+async def get_devices(request: Request, response: Response, current_user: User = Depends(get_current_active_user)):
     # Get all devices with current status
     try:
         if not poller:
@@ -223,7 +232,8 @@ async def get_devices(current_user: User = Depends(get_current_active_user)):
         raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/api/devices/{device_ip}")
-async def get_device_detail(device_ip: str, current_user: User = Depends(get_current_active_user)):
+@limiter.limit(RateLimit.DEVICE_DETAIL_LIMIT, key_func=RateLimit.get_user_or_ip)
+async def get_device_detail(request: Request, response: Response, device_ip: str, current_user: User = Depends(get_current_active_user)):
     """Get detailed info for a specific device"""
     try:
         device_ip = validate_ip(device_ip)
@@ -245,7 +255,10 @@ async def get_device_detail(device_ip: str, current_user: User = Depends(get_cur
         raise HTTPException(status_code=500, detail="Internal server error")
     
 @app.get("/api/devices/{device_ip}/history")
+@limiter.limit(RateLimit.DEVICE_HISTORY_LIMIT, key_func=RateLimit.get_user_or_ip)
 async def get_device_history(
+    request: Request,
+    response: Response,
     device_ip: str,
     hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1,
     current_user: User = Depends(get_current_active_user)

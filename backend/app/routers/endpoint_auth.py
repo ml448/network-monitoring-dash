@@ -1,19 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import UserCreate, UserResponse, Token
 from app.auth.hash import get_password_hash, verify_password, create_access_token
 from app.auth.dependencies import get_current_active_user
+from app.ratelimit import limiter, RateLimit
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+@limiter.limit(RateLimit.REGISTER_LIMIT)
+
+async def register(request: Request, response: Response, user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     #Check if username exists
     user_query = select(User).where(User.username == user_data.username)
     result = await db.execute(user_query)
@@ -45,7 +47,10 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
+@limiter.limit(RateLimit.LOGIN_LIMIT)
 async def login(
+    request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db)
 ):
@@ -69,5 +74,6 @@ async def login(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(get_current_active_user)):
+@limiter.limit(RateLimit.USER_LIMIT, key_func=RateLimit.get_user_or_ip)
+async def get_me(request: Request, response: Response, current_user: User = Depends(get_current_active_user)):
     return current_user
