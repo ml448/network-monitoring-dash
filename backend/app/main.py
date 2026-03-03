@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import os
-import ipaddress
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Depends, Request, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Depends, Request, Response, Path
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
@@ -15,14 +14,15 @@ from .database import create_tables
 from .routers import endpoint_auth
 from dotenv import load_dotenv
 from typing import Annotated
-from pathlib import Path
+from pathlib import Path as FilePath
+from pydantic import IPvAnyAddress
 from .auth.dependencies import get_current_active_user
 from app.models.user import User
 from slowapi.errors import RateLimitExceeded
 from .ratelimit import limiter, RateLimit, rate_limit_handler
 
 # Load environment variables
-env_path = Path(__file__).parent.parent.parent / ".env"
+env_path = FilePath(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 logging.basicConfig(level=logging.INFO)
@@ -67,14 +67,6 @@ def get_required_env(key: str, allow_empty: bool = False) -> str:
     if not value and not allow_empty:
         raise ValueError(f"Required environment variable '{key}' is empty")
     return value
-
-# Validate IP addresses
-def validate_ip(ip_string: str) -> str:
-    try:
-        ipaddress.ip_address(ip_string)
-        return ip_string
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Invalid IP: {ip_string}")
 
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -233,39 +225,44 @@ async def get_devices(request: Request, response: Response, current_user: User =
     
 @app.get("/api/devices/{device_ip}")
 @limiter.limit(RateLimit.DEVICE_DETAIL_LIMIT, key_func=RateLimit.get_user_or_ip)
-async def get_device_detail(request: Request, response: Response, device_ip: str, current_user: User = Depends(get_current_active_user)):
+async def get_device_detail(
+    request: Request, 
+    response: Response, 
+    device_ip: Annotated[IPvAnyAddress, Path(title="The device IP address")], 
+    current_user: User = Depends(get_current_active_user)
+):
     """Get detailed info for a specific device"""
     try:
-        device_ip = validate_ip(device_ip)
+        device_ip_str = str(device_ip)
 
         if not poller:
             raise HTTPException(status_code=503, detail="Poller not initialized")
 
-        device_data = poller.device_data.get(device_ip)
+        device_data = poller.device_data.get(device_ip_str)
         
         if not device_data:
-            raise HTTPException(status_code=404, detail=f"Device {device_ip} not found")
+            raise HTTPException(status_code=404, detail=f"Device {device_ip_str} not found")
         
         return {"success": True, "data": device_data}
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching device {device_ip}: {e}")
+        logger.error(f"Error fetching device {device_ip_str}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-    
+
 @app.get("/api/devices/{device_ip}/history")
 @limiter.limit(RateLimit.DEVICE_HISTORY_LIMIT, key_func=RateLimit.get_user_or_ip)
 async def get_device_history(
     request: Request,
     response: Response,
-    device_ip: str,
+    device_ip: Annotated[IPvAnyAddress, Path(title="The device IP address")],
     hours: Annotated[int, Query(ge=1, le=168, description="Hours of history (1-168)")] = 1,
     current_user: User = Depends(get_current_active_user)
 ):
     """Get historical metrics for a device from InfluxDB"""
     try:
-        device_ip = validate_ip(device_ip)
+        device_ip_str = str(device_ip)
 
         if not influx_client or not influx_client.client:
             raise HTTPException(
@@ -273,11 +270,11 @@ async def get_device_history(
                 detail="InfluxDB not available. Historical data not accessible."
             )
 
-        history = influx_client.query_device_history(device_ip, hours)
+        history = influx_client.query_device_history(device_ip_str, hours)
 
         return {
             "success": True,
-            "device_ip": device_ip,
+            "device_ip": device_ip_str,
             "hours": hours,
             "data": history,
             "count": len(history)
@@ -286,7 +283,7 @@ async def get_device_history(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching history for {device_ip}: {e}")
+        logger.error(f"Error fetching history for {device_ip_str}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.websocket("/ws")

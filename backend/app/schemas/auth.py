@@ -1,4 +1,3 @@
-from datetime import datetime 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 import re
 
@@ -10,21 +9,21 @@ class UserCreate(BaseModel):
 
     @field_validator('password')
     @classmethod
-    def validate_password(cls, v: str) -> str:
-        if not re.search(r'[A-Z]', v):
+    def validate_password(cls, pw: str) -> str:
+        if not re.search(r'[A-Z]', pw):
             raise ValueError('Password must contain at least one uppercase letter')
-        if not re.search(r'[a-z]', v):
+        if not re.search(r'[a-z]', pw):
             raise ValueError('Password must contain at least one lowercase letter')
-        if not re.search(r'\d', v):
+        if not re.search(r'\d', pw):
             raise ValueError('Password must contain at least one digit')
-        return v
-
-
-class UserLogin(BaseModel):
-    """Schema for login request."""
-    username: str
-    password: str
-
+        return pw
+    
+    @field_validator('username')
+    @classmethod
+    def check_username(cls, usr: str) -> str:
+        if not re.fullmatch(r'[a-zA-Z0-9_-]+', usr):
+            raise ValueError('Username can only contain letters, numbers, underscores, and hyphens')
+        return usr
 
 class Token(BaseModel):
     """Schema for JWT token response."""
