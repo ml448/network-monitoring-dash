@@ -15,6 +15,18 @@ A real-time dashboard for keeping an eye on network devices. Built this to learn
 
 - **Grafana Dashboard**: Visualizing the data in real-time
 
+- **JWT Authentication**: Secure API access with token-based auth
+   - User registration and login endpoints
+   - Password hashing
+   - Token expiration
+
+- **Rate Limiting**: Protection against API abuse
+   - Per-endpoint rate limits
+   - slowapi library usage
+
+- **E-mail Alerting**: Threshold-based alerts eith e-mail notifications using aiosmtplib and Gmail SMTP
+   - Cooldown period to prevent alert spam
+
 - **Demo Devices**: Hardcoded device list for testing (database integration coming later)
 
 ## Tech Stack

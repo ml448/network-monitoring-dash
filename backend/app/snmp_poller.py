@@ -27,6 +27,7 @@ from .snmp_oids import SYSTEM, HOST_RESOURCES, INTERFACES
 from .snmp_helpers import convert_snmp_value, format_uptime
 from .influx_client import InfluxClient
 from .demo_devices import get_demo
+from .alert_manager import AlertManager
 
 logger = logging.getLogger("RealSNMPPoller")
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -55,6 +56,7 @@ class RealSNMPPoller:
         self.timeout = timeout
         self.retries = retries
         self.poll_interval = poll_interval
+        self.alert_manager = AlertManager(influx_client=influx_client)
 
         # Device data storage
         self.device_data: Dict[str, Dict[str, Any]] = {}
@@ -201,6 +203,8 @@ class RealSNMPPoller:
                 self.influx_client.write_metrics(device_update)
 
             logger.debug(f"Polled {dev_name} ({dev_ip_raw}): {status} in {response_time}ms")
+
+            await self.alert_manager.process_device(device_update)
 
         except Exception as e:
             logger.error(f"Error polling {dev_name} ({dev_ip_raw}): {e}")
