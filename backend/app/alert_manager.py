@@ -50,6 +50,10 @@ class AlertManager():
         self.cooldown_seconds = int(os.getenv("ALERT_COOLDOWN_TIME"))
         self.last_alert_times: Dict[str, datetime] = {}
 
+        # Syslog alert threshold
+        # Alert on messages with severity <= this value
+        self.syslog_severity_threshold = int(os.getenv("SYSLOG_SEVERITY_THRESHOLD", "3"))
+
         self.influx_client = influx_client
     
     def _is_on_cooldown(self, device_ip: str, metric: str) -> bool:
@@ -219,6 +223,35 @@ Time (UTC): {alert.triggered_at.isoformat()}
         for alert in alerts:
             email_sent = await self.email_alert(alert)
             self.log_alert(alert, email_sent)
+
+    def check_syslog_message(self, msg) -> Optional[Alert]:
+        # Check if syslog message should trigger an alert based on severity
+        # Alert on severity <= threshold (lower number = more severe)
+        if msg.severity > self.syslog_severity_threshold:
+            return None
+
+        # Use hostname as device identifier, check cooldown
+        cooldown_key = f"syslog:{msg.hostname}"
+        if self._is_on_cooldown(msg.hostname, cooldown_key):
+            return None
+
+        now = datetime.now(timezone.utc)
+        self._mark_alerted(msg.hostname, cooldown_key)
+
+        return Alert(
+            device_ip=msg.source_ip,
+            device_name=msg.hostname,
+            metric="syslog",
+            value=float(msg.severity),
+            threshold=float(self.syslog_severity_threshold),
+            message=f"[{msg.severity_name}] {msg.app_name}: {msg.message[:200]}",
+            triggered_at=now,
+        )
+
+    async def process_alert(self, alert: Alert) -> None:
+        # Process a single alert: send email and log
+        email_sent = await self.email_alert(alert)
+        self.log_alert(alert, email_sent)
 
                 
     
