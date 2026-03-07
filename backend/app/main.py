@@ -10,6 +10,8 @@ from .demo_devices import get_demo
 from .snmp_poller import RealSNMPPoller
 from .influx_client import InfluxClient
 from .websocket import ConnectionManager
+from .alert_manager import AlertManager
+from .syslog_listener import SyslogListener
 from .database import create_tables
 from .routers import endpoint_auth
 from dotenv import load_dotenv
@@ -32,6 +34,8 @@ logger = logging.getLogger(__name__)
 manager = ConnectionManager()
 influx_client = None
 poller = None
+alert_manager = None
+syslog_listener = None
 
 def get_int_env(key: str, default: int, min_val: int = None, max_val: int = None) -> int:
     raw_value = os.getenv(key)
@@ -82,7 +86,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    global influx_client, poller
+    global influx_client, poller, alert_manager, syslog_listener
 
     # Startup
     logger.info("Starting Network Monitoring API...")
@@ -90,10 +94,13 @@ async def lifespan(app: FastAPI):
     # Create database tables (for auth)
     await create_tables()
     logger.info("Database tables created")
-    
+
     # Initialize InfluxDB client
     influx_client = InfluxClient()
-    
+
+    # Initialize AlertManager
+    alert_manager = AlertManager(influx_client=influx_client)
+
     # Initialize and start poller with secure environment validation
     poller = RealSNMPPoller(
         influx_client=influx_client,
@@ -102,18 +109,30 @@ async def lifespan(app: FastAPI):
         retries=get_int_env("SNMP_RETRIES", default=3, min_val=0, max_val=5),
         poll_interval=get_int_env("SNMP_POLL_INTERVAL", default=60, min_val=10, max_val=3600)
     )
-    
+
     poller.start()
-    
+
+    # Initialize and start syslog listener if enabled
+    if os.getenv("SYSLOG_ENABLED", "false").lower() == "true":
+        syslog_listener = SyslogListener(
+            influx_client=influx_client,
+            alert_manager=alert_manager,
+            ws_manager=manager,
+        )
+        syslog_listener.start()
+        logger.info(f"Syslog listener started on UDP port {syslog_listener.port}")
+
     logger.info("Application started successfully")
-    
+
     # Background task to broadcast updates
     asyncio.create_task(broadcast_updates())
-    
+
     yield
-    
+
     # Shutdown
     logger.info(" Shutting down...")
+    if syslog_listener:
+        syslog_listener.stop()
     if poller:
         poller.stop()
     if influx_client:
