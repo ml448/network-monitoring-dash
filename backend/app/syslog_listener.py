@@ -84,8 +84,8 @@ class SyslogMessage:
     
     @property
     def priority(self) -> int:
-         # Priority value measured by facility * 8 + severity
-         return self.facility * 8 + self.severity
+        # Priority value measured by facility * 8 + severity
+        return self.facility * 8 + self.severity
     
     def to_dict(self) -> dict:
         return {
@@ -103,25 +103,24 @@ class SyslogMessage:
 
 
 class SyslogListener:
-
     def __init__(
         self,
         influx_client: "InfluxClient",
         alert_manager: "AlertManager",
-        ws_manager: "ConnectionManager",
+        ws_manager: "ConnectionManager"
     ):
         self.influx_client = influx_client
         self.alert_manager = alert_manager
         self.ws_manager = ws_manager
 
-        # Syslog port configs (with defaults for safety)
+        #Syslog port configs
         self.port = int(os.getenv("SYSLOG_PORT", "514"))
         self.buffer_size = int(os.getenv("SYSLOG_BUFFER_SIZE", "1000"))
 
-        # Buffer recent messages
+        #Buffer recent messages
         self.recent_messages: deque[SyslogMessage] = deque(maxlen=self.buffer_size)
 
-        # Threading management
+        #Threading management
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._transport: Optional[asyncio.DatagramTransport] = None
@@ -134,7 +133,7 @@ class SyslogListener:
             "alerts_triggered": 0,
         }
 
-    # Start the syslog listener in a background thread
+    # Start listener in the background
     def start(self) -> None:
         if self._running:
             logger.warning("Syslog listener is already running")
@@ -144,7 +143,7 @@ class SyslogListener:
         self._thread.start()
         logger.info(f"Syslog is running on UDP port: {self.port}")
 
-    # Stop the listener gracefully
+    # Stop the listener
     def stop(self) -> None:
         if not self._running:
             return
@@ -171,8 +170,8 @@ class SyslogListener:
         finally:
             self._loop.close()
 
+    # Create and start the UDP server
     async def _start_udp_server(self) -> None:
-        """Create and start the UDP server."""
         self._transport, _ = await self._loop.create_datagram_endpoint(
             lambda: SyslogProtocol(self),
             local_addr=("0.0.0.0", self.port),
@@ -181,12 +180,11 @@ class SyslogListener:
         logger.info(f"Syslog UDP server listening on port {self.port}")
 
     def parse_message(self, data: bytes, source_ip: str) -> Optional[SyslogMessage]:
-        """Parse a raw syslog message (RFC 3164 or RFC 5424 format)."""
         raw = data.decode("utf-8", errors="replace").strip()
         now = datetime.now(timezone.utc)
 
-        # Try RFC 5424 first
         m = _RFC5424_PATTERN.match(raw)
+
         if m:
             pri = int(m.group(1))
             hostname = m.group(3) if m.group(3) != '-' else source_ip
@@ -204,14 +202,13 @@ class SyslogListener:
                 source_ip=source_ip,
             )
 
-        # Try RFC 3164
         m = _RFC3164_PATTERN.match(raw)
         if m:
             pri = int(m.group(1))
             hostname = m.group(3) if m.group(3) != '-' else source_ip
             # RFC 3164 group 4 contains "TAG: MESSAGE" or just message
             raw_msg = m.group(4).strip()
-            # Try to extract app_name from TAG (e.g., "sshd[1234]: message")
+            # Try to extract app_name from TAG
             tag_match = re.match(r'^(\S+?)(?:\[\d+\])?:\s*(.*)$', raw_msg)
             if tag_match:
                 app_name = tag_match.group(1)
@@ -246,7 +243,7 @@ class SyslogListener:
         )
 
     async def handle_message(self, msg: SyslogMessage) -> None:
-        """Route parsed message to all destinations."""
+        # Routes messages to all destinations and stores in buffer
         self.recent_messages.append(msg)
         self.stats["messages_received"] += 1
 
@@ -291,15 +288,13 @@ class SyslogListener:
             "port": self.port,
         }
 
-
+# Asyncio protocol handler for UDP syslog packets
 class SyslogProtocol(asyncio.DatagramProtocol):
-    """Asyncio protocol handler for UDP syslog packets."""
-
     def __init__(self, listener: SyslogListener):
         self.listener = listener
 
     def datagram_received(self, data: bytes, addr: tuple) -> None:
-        """Called when a UDP packet is received."""
+        # Called when a UDP packet is received
         source_ip = addr[0]
 
         try:
@@ -314,5 +309,6 @@ class SyslogProtocol(asyncio.DatagramProtocol):
             self.listener.stats["parse_errors"] += 1
 
     def error_received(self, exc: Exception) -> None:
-        """Called when a send/receive operation raises an OSError."""
+        # Called when a send/receive operation raises an OSError
         logger.error(f"Syslog UDP error: {exc}")
+        
