@@ -89,6 +89,31 @@ class InfluxClient:
         except Exception as e:
             logger.error(f"Error writing to InfluxDB: {e}")
     
+    def write_syslog(self, msg) -> None:
+        """Write syslog event to InfluxDB."""
+        if not self.write_api:
+            logger.debug("InfluxDB not available, skipping syslog write")
+            return
+
+        try:
+            point = Point("syslog_events") \
+                .tag("hostname", msg.hostname) \
+                .tag("facility", msg.facility_name) \
+                .tag("severity", msg.severity_name) \
+                .tag("app_name", msg.app_name or "unknown") \
+                .tag("source_ip", msg.source_ip) \
+                .tag("format", msg.format) \
+                .field("message", msg.message[:1000]) \
+                .field("priority", msg.priority) \
+                .field("facility_code", msg.facility) \
+                .field("severity_code", msg.severity)
+
+            self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+            logger.debug(f"Wrote syslog from {msg.hostname}: {msg.message[:50]}")
+
+        except Exception as e:
+            logger.error(f"Error writing syslog to InfluxDB: {e}")
+
     def _sanitize_flux_string(self, value: str) -> str:
         """Sanitize string for safe use in Flux queries by escaping special characters"""
         # Escape backslashes first, then quotes
