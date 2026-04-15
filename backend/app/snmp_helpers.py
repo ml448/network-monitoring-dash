@@ -43,8 +43,14 @@ def convert_snmp_value(value: Any) -> Union[int, float, str]:
         return value.prettyPrint()
 
     else:
-        # Fallback for unknown types
-        return str(value)
+        # Fallback: try numeric conversion before falling back to string
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return str(value)
 
 
 def format_uptime(seconds: int) -> str:
