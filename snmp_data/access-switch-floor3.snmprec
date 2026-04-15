@@ -1,0 +1,20 @@
+# Access-Switch-Floor3 - Access layer switch
+# System group
+1.3.6.1.2.1.1.1.0|4|Cisco IOS Software, Catalyst 2960X, Version 15.2(7)E3
+1.3.6.1.2.1.1.3.0|67|345600000
+1.3.6.1.2.1.1.5.0|4|Access-Switch-Floor3
+1.3.6.1.2.1.1.6.0|4|Building A - Floor 3 IDF
+
+# Host Resources - CPU (~18% average)
+1.3.6.1.2.1.25.3.3.1.2.1|2|16
+1.3.6.1.2.1.25.3.3.1.2.2|2|20
+
+# Host Resources - Memory (~32% usage)
+1.3.6.1.2.1.25.2.3.1.3.1|4|Physical Memory
+1.3.6.1.2.1.25.2.3.1.4.1|2|1024
+1.3.6.1.2.1.25.2.3.1.5.1|2|2000000
+1.3.6.1.2.1.25.2.3.1.6.1|2|640000
+
+# Interfaces - Lower bandwidth (~22 Mbps in, ~18 Mbps out)
+1.3.6.1.2.1.2.2.1.10.1|65:numeric|initial=70000000,rate=2750000,deviation=550000,increasing=1
+1.3.6.1.2.1.2.2.1.16.1|65:numeric|initial=55000000,rate=2250000,deviation=450000,increasing=1

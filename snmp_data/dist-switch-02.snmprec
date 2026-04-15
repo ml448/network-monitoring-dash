@@ -1,0 +1,20 @@
+# Dist-Switch-02 - Distribution switch
+# System group
+1.3.6.1.2.1.1.1.0|4|Cisco IOS Software, Catalyst 3850, Version 16.12.5
+1.3.6.1.2.1.1.3.0|67|604800000
+1.3.6.1.2.1.1.5.0|4|Dist-Switch-02
+1.3.6.1.2.1.1.6.0|4|Building B - MDF Room
+
+# Host Resources - CPU (~28% average)
+1.3.6.1.2.1.25.3.3.1.2.1|2|26
+1.3.6.1.2.1.25.3.3.1.2.2|2|30
+
+# Host Resources - Memory (~38% usage)
+1.3.6.1.2.1.25.2.3.1.3.1|4|Physical Memory
+1.3.6.1.2.1.25.2.3.1.4.1|2|1024
+1.3.6.1.2.1.25.2.3.1.5.1|2|4000000
+1.3.6.1.2.1.25.2.3.1.6.1|2|1520000
+
+# Interfaces - Moderate bandwidth (~42 Mbps in, ~38 Mbps out)
+1.3.6.1.2.1.2.2.1.10.1|65:numeric|initial=190000000,rate=5250000,deviation=850000,increasing=1
+1.3.6.1.2.1.2.2.1.16.1|65:numeric|initial=170000000,rate=4750000,deviation=750000,increasing=1

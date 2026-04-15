@@ -33,12 +33,21 @@ logger = logging.getLogger("RealSNMPPoller")
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 DEVICE_COMMUNITIES = {
-    "Router-main": "router-main",
-    "Switch-3rdfloor": "switch-3rdfloor",
-    "Firewall-primary": "firewall-primary",
-    "Server-web01": "server-web01",
-    "Accesspoint-floor2": "accesspoint-floor2",
-    "Switch-backup": "switch-backup",
+    "Core-Router-01": "core-router-01",
+    "Core-Switch-01": "core-switch-01",
+    "Dist-Firewall-Primary": "dist-firewall-primary",
+    "Dist-Firewall-Secondary": "dist-firewall-secondary",
+    "Dist-Switch-01": "dist-switch-01",
+    "Dist-Switch-02": "dist-switch-02",
+    "Access-Switch-Floor1": "access-switch-floor1",
+    "Access-Switch-Floor2": "access-switch-floor2",
+    "Access-Switch-Floor3": "access-switch-floor3",
+    "AP-Floor1": "ap-floor1",
+    "AP-Floor2": "ap-floor2",
+    "AP-Floor3": "ap-floor3",
+    "Server-Web-01": "server-web-01",
+    "Server-DB-01": "server-db-01",
+    "Server-Auth-01": "server-auth-01",
 }
 
 class RealSNMPPoller:
@@ -471,10 +480,17 @@ class RealSNMPPoller:
         #Check for reboot
         sys_uptime = snmp_data.get('sysUpTime', None)
         if sys_uptime is not None:
-            uptime_minutes = sys_uptime / 60
-            #Convert TimeTicks into minutes
-            if uptime_minutes < REBOOT_THRESHOLD_MINUTES:
-                return "Warning"
+            # Ensure numeric type before division
+            if isinstance(sys_uptime, str):
+                try:
+                    sys_uptime = int(sys_uptime)
+                except ValueError:
+                    sys_uptime = None
+            if sys_uptime is not None:
+                uptime_minutes = sys_uptime / 60
+                #Convert TimeTicks into minutes
+                if uptime_minutes < REBOOT_THRESHOLD_MINUTES:
+                    return "Warning"
     
         return "Online"
 

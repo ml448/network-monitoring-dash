@@ -1,0 +1,20 @@
+# Core-Switch-01 - Primary aggregation switch, very high throughput
+# System group
+1.3.6.1.2.1.1.1.0|4|Cisco NX-OS Software, Nexus 9300, Version 10.2(3)
+1.3.6.1.2.1.1.3.0|67|950400000
+1.3.6.1.2.1.1.5.0|4|Core-Switch-01
+1.3.6.1.2.1.1.6.0|4|Data Center - Core Rack A2
+
+# Host Resources - CPU (~25% average - low for switches)
+1.3.6.1.2.1.25.3.3.1.2.1|2|24
+1.3.6.1.2.1.25.3.3.1.2.2|2|26
+
+# Host Resources - Memory (~45% usage)
+1.3.6.1.2.1.25.2.3.1.3.1|4|Physical Memory
+1.3.6.1.2.1.25.2.3.1.4.1|2|1024
+1.3.6.1.2.1.25.2.3.1.5.1|2|16000000
+1.3.6.1.2.1.25.2.3.1.6.1|2|7200000
+
+# Interfaces - Very high bandwidth (~150 Mbps in, ~140 Mbps out)
+1.3.6.1.2.1.2.2.1.10.1|65:numeric|initial=800000000,rate=18750000,deviation=3000000,increasing=1
+1.3.6.1.2.1.2.2.1.16.1|65:numeric|initial=750000000,rate=17500000,deviation=2800000,increasing=1

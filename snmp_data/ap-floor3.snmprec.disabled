@@ -1,0 +1,20 @@
+# AP-Floor3 - Wireless access point
+# System group
+1.3.6.1.2.1.1.1.0|4|Cisco Aironet 2800 Series, IOS-XE 17.6.3
+1.3.6.1.2.1.1.3.0|67|86400000
+1.3.6.1.2.1.1.5.0|4|AP-Floor3
+1.3.6.1.2.1.1.6.0|4|Building A - Floor 3 Executive Suite
+
+# Host Resources - CPU (~12% average - fewer users)
+1.3.6.1.2.1.25.3.3.1.2.1|2|11
+1.3.6.1.2.1.25.3.3.1.2.2|2|13
+
+# Host Resources - Memory (~25% usage)
+1.3.6.1.2.1.25.2.3.1.3.1|4|Physical Memory
+1.3.6.1.2.1.25.2.3.1.4.1|2|1024
+1.3.6.1.2.1.25.2.3.1.5.1|2|1000000
+1.3.6.1.2.1.25.2.3.1.6.1|2|250000
+
+# Interfaces - Low bandwidth (~8 Mbps in, ~6 Mbps out)
+1.3.6.1.2.1.2.2.1.10.1|65:numeric|initial=30000000,rate=1000000,deviation=300000,increasing=1
+1.3.6.1.2.1.2.2.1.16.1|65:numeric|initial=25000000,rate=750000,deviation=250000,increasing=1
