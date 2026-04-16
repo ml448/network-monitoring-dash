@@ -1,4 +1,6 @@
 import os
+import ssl
+import asyncio
 import logging
 import aiosmtplib
 from datetime import datetime, timezone
@@ -7,6 +9,7 @@ from dataclasses import dataclass
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from .influx_client import InfluxClient
+from .syslog_listener import ALERT_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +58,11 @@ class AlertManager():
         self.syslog_severity_threshold = int(os.getenv("SYSLOG_SEVERITY_THRESHOLD", "3"))
 
         self.influx_client = influx_client
+
+        # Persistent SMTP connection
+        self._smtp_client: Optional[aiosmtplib.SMTP] = None
+        self._smtp_connected: bool = False
+        self._smtp_lock = asyncio.Lock() 
     
     def _is_on_cooldown(self, device_ip: str, metric: str) -> bool:
         key = f"{device_ip}:{metric}"
@@ -72,6 +80,86 @@ class AlertManager():
         key = f"{device_ip}:{metric}"
         self.last_alert_times[key] = datetime.now(timezone.utc)
 
+    async def connect_smtp(self) -> bool:
+        """Establish persistent SMTP connection at app startup."""
+        if not self.smtp_host or not self.smtp_username:
+            logger.warning("SMTP not configured, skipping connection")
+            return False
+
+        try:
+            # Create SSL context for STARTTLS
+            tls_context = ssl.create_default_context()
+
+            self._smtp_client = aiosmtplib.SMTP(
+                hostname=self.smtp_host,
+                port=self.smtp_port,
+                timeout=30,
+                start_tls=False,
+            )
+            logger.debug(f"SMTP: Connecting to {self.smtp_host}:{self.smtp_port}...")
+            await self._smtp_client.connect()
+            logger.debug("SMTP: Connected, starting TLS...")
+            await self._smtp_client.starttls(tls_context=tls_context)
+            logger.debug("SMTP: TLS established, logging in...")
+            await self._smtp_client.login(self.smtp_username, self.smtp_password)
+            self._smtp_connected = True
+            logger.info(f"SMTP connected to {self.smtp_host}:{self.smtp_port}")
+            return True
+        except ssl.SSLError as e:
+            logger.error(f"SMTP SSL error: {e}")
+            self._smtp_connected = False
+            return False
+        except Exception as e:
+            logger.error(f"Failed to connect SMTP: {e}")
+            self._smtp_connected = False
+            return False
+
+    async def _close_smtp(self) -> None:
+        """Safely close existing SMTP connection without raising errors."""
+        if self._smtp_client:
+            try:
+                await self._smtp_client.quit()
+            except Exception:
+                pass
+            finally:
+                self._smtp_client = None
+                self._smtp_connected = False
+
+    async def disconnect_smtp(self) -> None:
+        """Close SMTP connection at app shutdown."""
+        if self._smtp_client and self._smtp_connected:
+            try:
+                await self._smtp_client.quit()
+                logger.info("SMTP connection closed")
+            except Exception as e:
+                logger.warning(f"Error closing SMTP: {e}")
+            finally:
+                self._smtp_connected = False
+                self._smtp_client = None
+
+    async def _ensure_smtp_connected(self) -> bool:
+        """Ensure SMTP is connected, reconnect if needed."""
+        # Quick check without lock
+        if self._smtp_connected and self._smtp_client:
+            try:
+                await self._smtp_client.noop()
+                return True
+            except Exception:
+                logger.warning("SMTP connection lost, will reconnect...")
+
+        # Acquire lock to prevent concurrent reconnection attempts
+        async with self._smtp_lock:
+            # Double-check after acquiring lock
+            if self._smtp_connected and self._smtp_client:
+                try:
+                    await self._smtp_client.noop()
+                    return True
+                except Exception:
+                    pass
+
+            # Clean up stale connection before reconnecting
+            await self._close_smtp()
+            return await self.connect_smtp()
 
     def check_device(self, device_data: Dict[str, Any]) -> List[Alert]:
         alerts: List[Alert] = []
@@ -128,6 +216,23 @@ class AlertManager():
                 alerts.append(alert)
                 self._mark_alerted(device_ip, "response_time")
 
+        # Check bandwidth for comparison
+        for bw_metric in ("bandwidth_in", "bandwidth_out"):
+            bw = metrics.get(bw_metric)
+            if bw is not None and bw > self.bandwidth_threshold:
+                if not self._is_on_cooldown(device_ip, bw_metric):
+                    alert = Alert(
+                        device_ip=device_ip,
+                        device_name=device_name,
+                        metric=bw_metric,
+                        value=float(bw),
+                        threshold=self.bandwidth_threshold,
+                        message=f"Bandwidth ({bw_metric}) exceeded threshold ({bw:.2f} Mbps > {self.bandwidth_threshold} Mbps)",
+                        triggered_at=now
+                    )
+                    alerts.append(alert)
+                    self._mark_alerted(device_ip, bw_metric)
+
         # Check device status (at device_data level, not inside metrics)
         status = device_data.get("status")
         if status in ("Offline", "Error"):
@@ -146,17 +251,21 @@ class AlertManager():
 
         return alerts
 
-    async def email_alert(self, alert: Alert) -> None:
+    async def email_alert(self, alert: Alert) -> bool:
         if not self.smtp_username or not self.alert_to:
             logger.warning("SMTP not configured, skipping...")
             return False
-        
+
+        # Ensure we have an active connection
+        if not await self._ensure_smtp_connected():
+            logger.error("Cannot send alert: SMTP not connected")
+            return False
+
         try:
             msg = MIMEMultipart()
             msg["From"] = self.alert_from
             msg["To"] = self.alert_to
             msg["Subject"] = f"Alert: {alert.device_name} - {alert.metric}"
-
 
             body = f"""
 Alert Triggered
@@ -171,19 +280,18 @@ Time (UTC): {alert.triggered_at.isoformat()}
 {alert.message}
 """
             msg.attach(MIMEText(body, "plain"))
-            
-            await aiosmtplib.send(
-                msg,
-                hostname=self.smtp_host,
-                port=self.smtp_port,
-                username=self.smtp_username,
-                password=self.smtp_password,
-                start_tls=True,
-            )
+
+            # Use persistent connection
+            await self._smtp_client.send_message(msg)
 
             logger.info(f"Alert sent: {alert.device_name}:{alert.metric}")
             return True
-        
+
+        except aiosmtplib.SMTPException as e:
+            logger.error(f"SMTP error sending alert: {e}")
+            # Mark as disconnected so next attempt will reconnect
+            self._smtp_connected = False
+            return False
         except Exception as e:
             logger.error(f"Failed to send alert: {e}")
             return False
@@ -225,28 +333,39 @@ Time (UTC): {alert.triggered_at.isoformat()}
             self.log_alert(alert, email_sent)
 
     def check_syslog_message(self, msg) -> Optional[Alert]:
-        # Check if syslog message should trigger an alert based on severity
-        # Alert on severity <= threshold (lower number = more severe)
-        if msg.severity > self.syslog_severity_threshold:
-            return None
-
-        # Use hostname as device identifier, check cooldown
-        cooldown_key = f"syslog:{msg.hostname}"
-        if self._is_on_cooldown(msg.hostname, cooldown_key):
-            return None
-
         now = datetime.now(timezone.utc)
-        self._mark_alerted(msg.hostname, cooldown_key)
 
-        return Alert(
-            device_ip=msg.source_ip,
-            device_name=msg.hostname,
-            metric="syslog",
-            value=float(msg.severity),
-            threshold=float(self.syslog_severity_threshold),
-            message=f"[{msg.severity_name}] {msg.app_name}: {msg.message[:200]}",
-            triggered_at=now,
-        )
+        # Severity-based alerting (existing logic)
+        # Alert on severity <= threshold (lower number = more severe)
+        if msg.severity <= self.syslog_severity_threshold:
+            if not self._is_on_cooldown(msg.source_ip, "syslog"):
+                self._mark_alerted(msg.source_ip, "syslog")
+                return Alert(
+                    device_ip=msg.source_ip,
+                    device_name=msg.hostname,
+                    metric="syslog",
+                    value=float(msg.severity),
+                    threshold=float(self.syslog_severity_threshold),
+                    message=f"[{msg.severity_name}] {msg.app_name}: {msg.message[:200]}",
+                    triggered_at=now,
+                )
+
+        # Pattern-based alerting (catches important events at any severity)
+        for pattern, label in ALERT_PATTERNS:
+            if pattern.search(msg.message):
+                if self._is_on_cooldown(msg.source_ip, f"syslog:{label}"):
+                    return None
+                self._mark_alerted(msg.source_ip, f"syslog:{label}")
+                return Alert(
+                    device_ip=msg.source_ip,
+                    device_name=msg.hostname,
+                    metric=f"syslog:{label}",
+                    value=float(msg.severity),
+                    threshold=float(self.syslog_severity_threshold),
+                    message=f"[{label}] {msg.app_name}: {msg.message[:200]}",
+                    triggered_at=now,
+                )
+        return None
 
     async def process_alert(self, alert: Alert) -> None:
         # Process a single alert: send email and log

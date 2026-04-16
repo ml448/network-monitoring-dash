@@ -98,8 +98,9 @@ async def lifespan(app: FastAPI):
     # Initialize InfluxDB client
     influx_client = InfluxClient()
 
-    # Initialize AlertManager
+    # Initialize AlertManager and connect SMTP
     alert_manager = AlertManager(influx_client=influx_client)
+    await alert_manager.connect_smtp()
 
     # Initialize and start poller with secure environment validation
     poller = RealSNMPPoller(
@@ -131,6 +132,8 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info(" Shutting down...")
+    if alert_manager:
+        await alert_manager.disconnect_smtp()
     if syslog_listener:
         syslog_listener.stop()
     if poller:
