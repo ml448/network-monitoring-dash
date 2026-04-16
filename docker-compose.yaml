@@ -29,6 +29,7 @@ services:
     container_name: backend
     ports:
       - "8000:8000"
+      - "514:514/udp" 
     depends_on:
       - influxdb
     environment:
@@ -71,6 +72,11 @@ services:
       - ALERT_BANDWIDTH_THRESHOLD=${ALERT_BANDWIDTH_THRESHOLD}
       - ALERT_RESPONSE_TIME_THRESHOLD=${ALERT_RESPONSE_TIME_THRESHOLD}
       - ALERT_COOLDOWN_TIME=${ALERT_COOLDOWN_TIME}
+      # Syslog Listener
+      - SYSLOG_ENABLED=${SYSLOG_ENABLED}
+      - SYSLOG_PORT=${SYSLOG_PORT}
+      - SYSLOG_BUFFER_SIZE=${SYSLOG_BUFFER_SIZE}
+      - SYSLOG_SEVERITY_THRESHOLD=${SYSLOG_SEVERITY_THRESHOLD}
     volumes:
       - ./backend/app:/app/app
     networks:
