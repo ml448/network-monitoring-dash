@@ -1,5 +1,4 @@
 import subprocess
-import sys
 import time
 
 DEVICES = {
@@ -48,7 +47,6 @@ def start_simulators():
 
     print("-" * 60)
     print(f"{len(processes)} simulators started.")
-    print("Watch output above for 'Listening at...' messages")
     print("Press Ctrl+C to stop all simulators.\n")
 
     try:

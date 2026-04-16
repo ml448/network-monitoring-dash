@@ -253,7 +253,7 @@ class RealSNMPPoller:
                     timeout=self.timeout * (self.retries + 1)  # Total timeout
                 )
             except asyncio.TimeoutError:
-                #Returns: Dictionary of {name: converted_value}
+                #Return dictionary of {name: converted_value}
                 return {}
 
             # Handle errors
@@ -262,12 +262,25 @@ class RealSNMPPoller:
             if error_status:
                 raise Exception(f"SNMP error: {error_status.prettyPrint()}")
 
-            # Convert results
+            # Convert results by matching by OID string, not position
             results = {}
-            oid_names = list(oids.keys())
-            for i, (oid, value) in enumerate(var_binds):
-                name = oid_names[i] if i < len(oid_names) else f"unknown_{i}"
-                results[name] = convert_snmp_value(value)
+            # Reverse lookup
+            oid_to_name = {v: k for k, v in oids.items()}
+
+            for oid, value in var_binds:
+                oid_str = str(oid)
+                # Find matching name by comparing OID strings
+                name = oid_to_name.get(oid_str)
+                if name is None:
+                    # Try matching with/without leading dot
+                    oid_normalized = oid_str.lstrip('.')
+                    for req_oid, req_name in oid_to_name.items():
+                        req_normalized = req_oid.lstrip('.')
+                        if oid_normalized == req_normalized:
+                            name = req_name
+                            break
+                if name:
+                    results[name] = convert_snmp_value(value)
 
             return results
 
@@ -399,7 +412,6 @@ class RealSNMPPoller:
             #ip:port format as device key
             device_key = f"{ip}:{port}"
 
-
             # Query current interface counters
             counters = await self._snmp_get_multi(
                 ip,
@@ -413,7 +425,7 @@ class RealSNMPPoller:
 
             if not counters:
                 return {"bandwidth_in": 0.0, "bandwidth_out": 0.0}
-
+            
             in_octets = counters.get("ifInOctets", 0)
             out_octets = counters.get("ifOutOctets", 0)
             logger.debug(f"Bandwidth counters for {ip}:{port} - in: {in_octets} (type: {type(in_octets).__name__}), out: {out_octets} (type: {type(out_octets).__name__})")
@@ -469,8 +481,15 @@ class RealSNMPPoller:
         UPTIME_WARNING = 5000
         REBOOT_THRESHOLD_MINUTES = 10 
 
-        # No sysDescr means basic SNMP query failed - device is offline
-        if "sysDescr" not in snmp_data:
+        # Check if we got ANY valid SNMP response - device is responding
+        # sysDescr is preferred but cpu_usage/mem_usage/sysUpTime also indicate the device is online
+        has_valid_response = (
+            "sysDescr" in snmp_data or
+            "sysUpTime" in snmp_data or
+            "cpu_usage" in snmp_data or
+            "mem_usage" in snmp_data
+        )
+        if not has_valid_response:
             return "Offline"
         
         # Slow response time indicates a warning

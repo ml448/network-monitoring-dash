@@ -67,19 +67,19 @@ class InfluxClient:
                 .tag("device_type", dev_type) \
                 .tag("status", status)
             
-            # Add metric fields
+            # Add metric fields with type validation
             if metrics:
-                if "cpu_usage" in metrics:
+                if "cpu_usage" in metrics and isinstance(metrics["cpu_usage"], (int, float)):
                     point = point.field("cpu_usage", float(metrics["cpu_usage"]))
-                if "mem_usage" in metrics:
+                if "mem_usage" in metrics and isinstance(metrics["mem_usage"], (int, float)):
                     point = point.field("mem_usage", float(metrics["mem_usage"]))
-                if "bandwidth_in" in metrics:
+                if "bandwidth_in" in metrics and isinstance(metrics["bandwidth_in"], (int, float)):
                     point = point.field("bandwidth_in", float(metrics["bandwidth_in"]))
-                if "bandwidth_out" in metrics:
+                if "bandwidth_out" in metrics and isinstance(metrics["bandwidth_out"], (int, float)):
                     point = point.field("bandwidth_out", float(metrics["bandwidth_out"]))
-                if "uptime" in metrics:
+                if "uptime" in metrics and isinstance(metrics["uptime"], (int, float)):
                     point = point.field("uptime", int(metrics["uptime"]))
-                if "response_time" in metrics:
+                if "response_time" in metrics and isinstance(metrics["response_time"], (int, float)):
                     point = point.field("response_time", float(metrics["response_time"]))
             
             # Write to InfluxDB
