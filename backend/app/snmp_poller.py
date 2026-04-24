@@ -29,8 +29,7 @@ from .influx_client import InfluxClient
 from .demo_devices import get_demo
 from .alert_manager import AlertManager
 
-logger = logging.getLogger("RealSNMPPoller")
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 DEVICE_COMMUNITIES = {
     "Core-Router-01": "core-router-01",
@@ -83,7 +82,7 @@ class RealSNMPPoller:
         )
 
     def start(self):
-        """Start the background polling thread."""
+        # Start the background polling thread
         if self.running:
             logger.warning("Poller already running")
             return
@@ -94,7 +93,7 @@ class RealSNMPPoller:
         logger.info("✓ SNMP Poller started")
 
     def stop(self):
-        """Stop the polling thread gracefully."""
+        # Stop the polling thread gracefully
         self.running = False
         if self.loop and self.loop.is_running():
             # Schedule graceful shutdown
@@ -116,27 +115,25 @@ class RealSNMPPoller:
         self.loop.call_later(0.1, self.loop.stop)
 
     def _run_async_loop(self):
-        """Run the async event loop in a background thread."""
+        # Run the async event loop in a background thread
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         self.loop.run_until_complete(self._poll_loop())
 
     async def _poll_loop(self):
-        """Main polling loop - runs asynchronously."""
+        # Main polling loop - runs asynchronously
         while self.running:
             try:
                 await self._poll_all_devices()
                 await asyncio.sleep(self.poll_interval)
             except asyncio.CancelledError:
-                # Task cancelled during shutdown
-                logger.debug("Polling loop cancelled during shutdown")
                 break
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
                 await asyncio.sleep(5)
 
     async def _poll_all_devices(self):
-        """Poll all configured devices concurrently."""
+        # Poll all configured devices concurrently
         devices = get_demo()
 
         # Poll all devices concurrently using asyncio.gather
@@ -154,13 +151,11 @@ class RealSNMPPoller:
         return ip_string, 161
 
     async def _poll_device(self, device: Dict[str, Any]):
-        """Poll a single device for SNMP data."""
+        # Poll a single device for SNMP data
         dev_ip_raw = device["ip"]
         dev_ip, dev_port = self._parse_ip_port(dev_ip_raw)
         dev_name = device.get("name", dev_ip_raw)
         dev_community = DEVICE_COMMUNITIES.get(dev_name, self.community)
-
-        logger.info(f"Polling {dev_name} at {dev_ip}:{dev_port} with community '{dev_community}'")
 
         try:
             # Measure response time
@@ -178,8 +173,6 @@ class RealSNMPPoller:
                 port=dev_port,
                 community=dev_community,
             )
-
-            logger.info(f"SNMP response received: {list(snmp_data.keys())}")
 
             response_time = round((time.time() - start_time) * 1000, 2)  # ms
 
@@ -210,8 +203,6 @@ class RealSNMPPoller:
             # Write to InfluxDB
             if self.influx_client:
                 self.influx_client.write_metrics(device_update)
-
-            logger.debug(f"Polled {dev_name} ({dev_ip_raw}): {status} in {response_time}ms")
 
             await self.alert_manager.process_device(device_update)
 
@@ -269,6 +260,12 @@ class RealSNMPPoller:
 
             for oid, value in var_binds:
                 oid_str = str(oid)
+                value_str = str(value)
+
+                # Skip SNMP error responses (noSuchObject, noSuchInstance, endOfMibView)
+                if 'noSuch' in value_str or 'endOfMib' in value_str:
+                    continue
+
                 # Find matching name by comparing OID strings
                 name = oid_to_name.get(oid_str)
                 if name is None:
@@ -279,13 +276,13 @@ class RealSNMPPoller:
                         if oid_normalized == req_normalized:
                             name = req_name
                             break
+
                 if name:
                     results[name] = convert_snmp_value(value)
 
             return results
 
-        except Exception as e:
-            logger.debug(f"SNMP GET failed for {ip}: {e}")
+        except Exception:
             return {}
 
     async def _snmp_walk(
@@ -317,28 +314,24 @@ class RealSNMPPoller:
                         timeout=self.timeout * (self.retries + 1)
                     )
                 except asyncio.TimeoutError:
-                    logger.debug(f"WALK timeout at iteration {iteration} for {ip}:{port} base_oid={base_oid}")
                     break
 
                 if error_indication:
-                    logger.debug(f"WALK error_indication at iteration {iteration}: {error_indication}")
                     break
                 if error_status:
-                    logger.debug(f"WALK error_status at iteration {iteration}: {error_status.prettyPrint()}")
                     break
 
                 for oid, value in var_binds:
                     oid_str = str(oid)
                     # Stop if we've left the base OID subtree
                     if not oid_str.startswith(base_oid):
-                        logger.debug(f"WALK stopped at iteration {iteration}: {oid_str} not under {base_oid}")
                         return results
 
                     results.append((oid_str, convert_snmp_value(value)))
                     current_oid = oid
 
-        except Exception as e:
-            logger.debug(f"SNMP WALK failed for {ip} at {base_oid}: {e}")
+        except Exception:
+            pass
 
         return results
 
@@ -365,8 +358,7 @@ class RealSNMPPoller:
             avg_cpu = sum(cpu_values) / len(cpu_values)
             return round(avg_cpu, 2)
 
-        except Exception as e:
-            logger.debug(f"Failed to get CPU usage for {ip}: {e}")
+        except Exception:
             return 0.0
         
     async def _get_memory_usage(self, ip: str, port: int = 161, community: str = None) -> float:
@@ -386,22 +378,19 @@ class RealSNMPPoller:
             )
         
             if not storage_data:
-                logger.debug(f"No memory data for {ip}")
                 return 0.0
-        
+
             alloc_units = storage_data.get("allocationUnits", 0)
             total_blocks = storage_data.get("size", 0)
             used_blocks = storage_data.get("used", 0)
-        
+
             if total_blocks == 0:
-                logger.debug(f"Invalid memory total for {ip}: {total_blocks}")
                 return 0.0
-        
+
             mem_percent = (used_blocks / total_blocks) * 100
             return round(mem_percent, 2)
-        
-        except Exception as e:
-            logger.debug(f"Failed to get memory usage for {ip}: {e}")
+
+        except Exception:
             return 0.0
 
     # Calculate bandwidth rate for specified interface
@@ -428,7 +417,6 @@ class RealSNMPPoller:
             
             in_octets = counters.get("ifInOctets", 0)
             out_octets = counters.get("ifOutOctets", 0)
-            logger.debug(f"Bandwidth counters for {ip}:{port} - in: {in_octets} (type: {type(in_octets).__name__}), out: {out_octets} (type: {type(out_octets).__name__})")
 
             # Get previous counters for this device
             prev = self.previous_counters.get(device_key)
@@ -470,8 +458,7 @@ class RealSNMPPoller:
                 "bandwidth_out": round(bandwidth_out, 2),
             }
 
-        except Exception as e:
-            logger.debug(f"Failed to get bandwidth for {ip}: {e}")
+        except Exception:
             return {"bandwidth_in": 0.0, "bandwidth_out": 0.0}
 
     # Device status
@@ -535,17 +522,17 @@ class RealSNMPPoller:
 
 
     def device_status(self, dev_ip: str) -> str:
-        """Get current status for a device."""
+        # Get current status for a device
         return self.device_data.get(dev_ip, {}).get("status", "unknown")
 
     def get_last_update(self, dev_ip: str) -> Optional[str]:
-        """Get timestamp of last poll for a device."""
+        # Get timestamp of last poll for a device
         return self.device_data.get(dev_ip, {}).get("last_polled")
 
     def get_metrics(self, dev_ip: str) -> Dict[str, Any]:
-        """Get current metrics for a device."""
+        # Get current metrics for a device
         return self.device_data.get(dev_ip, {}).get("metrics", {})
 
     def get_all_devices(self) -> Dict[str, Dict[str, Any]]:
-        """Get all device data."""
+        # Get all device data
         return self.device_data
