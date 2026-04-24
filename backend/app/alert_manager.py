@@ -81,7 +81,7 @@ class AlertManager():
         self.last_alert_times[key] = datetime.now(timezone.utc)
 
     async def connect_smtp(self) -> bool:
-        """Establish persistent SMTP connection at app startup."""
+        # Establish persistent SMTP connection at app startup
         if not self.smtp_host or not self.smtp_username:
             logger.warning("SMTP not configured, skipping connection")
             return False
@@ -90,17 +90,16 @@ class AlertManager():
             # Create SSL context for STARTTLS
             tls_context = ssl.create_default_context()
 
+            # Use start_tls=True for automatic STARTTLS handling after EHLO
+            # This is more reliable than manually calling starttls() after connect()
             self._smtp_client = aiosmtplib.SMTP(
                 hostname=self.smtp_host,
                 port=self.smtp_port,
-                timeout=30,
-                start_tls=False,
+                timeout=60,
+                start_tls=True,
+                tls_context=tls_context,
             )
-            logger.debug(f"SMTP: Connecting to {self.smtp_host}:{self.smtp_port}...")
             await self._smtp_client.connect()
-            logger.debug("SMTP: Connected, starting TLS...")
-            await self._smtp_client.starttls(tls_context=tls_context)
-            logger.debug("SMTP: TLS established, logging in...")
             await self._smtp_client.login(self.smtp_username, self.smtp_password)
             self._smtp_connected = True
             logger.info(f"SMTP connected to {self.smtp_host}:{self.smtp_port}")
@@ -115,7 +114,7 @@ class AlertManager():
             return False
 
     async def _close_smtp(self) -> None:
-        """Safely close existing SMTP connection without raising errors."""
+        # Safely close existing SMTP connection without raising errors
         if self._smtp_client:
             try:
                 await self._smtp_client.quit()
@@ -126,7 +125,7 @@ class AlertManager():
                 self._smtp_connected = False
 
     async def disconnect_smtp(self) -> None:
-        """Close SMTP connection at app shutdown."""
+        # Close SMTP connection at app shutdown
         if self._smtp_client and self._smtp_connected:
             try:
                 await self._smtp_client.quit()
@@ -138,7 +137,7 @@ class AlertManager():
                 self._smtp_client = None
 
     async def _ensure_smtp_connected(self) -> bool:
-        """Ensure SMTP is connected, reconnect if needed."""
+        # Ensure SMTP is connected, reconnect if needed
         # Quick check without lock
         if self._smtp_connected and self._smtp_client:
             try:
@@ -318,8 +317,6 @@ Time (UTC): {alert.triggered_at.isoformat()}
                 record=point
             )
 
-            logger.debug(f"Alert logged to InfluxDB: {alert.device_name}:{alert.metric}")
-
         except Exception as e:
             logger.error(f"Failed to log alert: {e}")
 
@@ -371,19 +368,3 @@ Time (UTC): {alert.triggered_at.isoformat()}
         # Process a single alert: send email and log
         email_sent = await self.email_alert(alert)
         self.log_alert(alert, email_sent)
-
-                
-    
-    
-            
-            
-    
-
-
-    
-
-
-    
-
-
-        
