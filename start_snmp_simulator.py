@@ -1,5 +1,11 @@
 import subprocess
 import time
+import os
+from pathlib import Path
+
+# Get absolute path to snmp_data directory
+SCRIPT_DIR = Path(__file__).parent.absolute()
+DATA_DIR = SCRIPT_DIR / "snmp_data"
 
 DEVICES = {
     "core-router-01": 11610,
@@ -24,23 +30,39 @@ def start_simulators():
     processes = []
 
     print("Starting SNMP simulators...")
+    print(f"Data directory: {DATA_DIR}")
     print("-" * 60)
+
+    if not DATA_DIR.exists():
+        print(f"ERROR: Data directory not found: {DATA_DIR}")
+        return
 
     for device, port in DEVICES.items():
         try:
             cmd = [
-                "snmpsim-command-responder",  
-                "--data-dir=snmp_data",      
+                "snmpsim-command-responder",
+                f"--data-dir={DATA_DIR}",
                 f"--agent-udpv4-endpoint=0.0.0.0:{port}",
+                "--log-level=error",
             ]
 
             print(f"Starting {device} on port {port}...")
 
-            proc = subprocess.Popen(cmd)
-            
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            # Brief wait to check for immediate failures
+            time.sleep(0.5)
+            if proc.poll() is not None:
+                _, stderr = proc.communicate()
+                print(f"   FAILED: {stderr.decode().strip()}")
+                continue
+
             processes.append((device, port, proc))
             print(f"   Started PID: {proc.pid}")
-            time.sleep(1)
 
         except Exception as e:
             print(f"   Failed: {e}")
