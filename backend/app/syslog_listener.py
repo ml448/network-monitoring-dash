@@ -208,14 +208,22 @@ class SyslogListener:
             hostname = m.group(3) if m.group(3) != '-' else source_ip
             # RFC 3164 group 4 contains "TAG: MESSAGE" or just message
             raw_msg = m.group(4).strip()
-            # Try to extract app_name from TAG
-            tag_match = re.match(r'^(\S+?)(?:\[\d+\])?:\s*(.*)$', raw_msg)
-            if tag_match:
-                app_name = tag_match.group(1)
-                message = tag_match.group(2)
-            else:
-                app_name = ""
+
+            # Detect when a hostname is a process name
+            pid_in_hostname = re.match(r'^(\S+?)\[(\d+)\]:?$', hostname)
+            if pid_in_hostname:
+                app_name = pid_in_hostname.group(1)
+                hostname = source_ip
                 message = raw_msg
+            else:
+                # Try to extract app_name from TAG
+                tag_match = re.match(r'^(\S+?)(?:\[\d+\])?:\s*(.*)$', raw_msg)
+                if tag_match:
+                    app_name = tag_match.group(1)
+                    message = tag_match.group(2)
+                else:
+                    app_name = ""
+                    message = raw_msg
             return SyslogMessage(
                 timestamp=now,
                 hostname=hostname,
