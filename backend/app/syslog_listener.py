@@ -179,6 +179,33 @@ class SyslogListener:
         )
         logger.info(f"Syslog UDP server listening on port {self.port}")
 
+    @staticmethod
+    # Parsing CSV format syslog messages
+    def parse_filterlog(message: str) -> str:
+        fields = message.split(",")
+        if len(fields) < 20:
+            return message
+        try:
+            action = fields[6]
+            direction = fields[7]
+            protocol = fields[16]
+            src_ip = fields[18]
+            dst_ip = fields[19]
+
+            summary = f"{action} {direction} {protocol} {src_ip}"
+
+            has_ports = protocol.lower() in ("tcp", "udp") and len(fields) > 21
+            if has_ports:
+                summary += f":{fields[20]} -> {dst_ip}:{fields[21]}"
+            else:
+                summary += f" -> {dst_ip}"
+            if protocol.lower() == "tcp" and len(fields) > 24:
+                summary += f" [{fields[24]}]"
+            return summary
+        except (IndexError, ValueError):
+            return message
+
+
     def parse_message(self, data: bytes, source_ip: str) -> Optional[SyslogMessage]:
         raw = data.decode("utf-8", errors="replace").strip()
         now = datetime.now(timezone.utc)
@@ -224,6 +251,9 @@ class SyslogListener:
                 else:
                     app_name = ""
                     message = raw_msg
+
+            if app_name == "filterlog":
+                message = self.parse_filterlog(message)
             return SyslogMessage(
                 timestamp=now,
                 hostname=hostname,
