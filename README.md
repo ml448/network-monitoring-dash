@@ -343,11 +343,9 @@ docker compose logs influxdb
 2. For Gmail, use an App Password (Documentation: https://knowledge.workspace.google.com/admin/gmail/send-email-from-a-printer-scanner-or-app)
 3. Check backend logs for SMTP errors
 
-## Future Enhancement: SNMPv3 Support
+## Roadmap
 
-### Why Upgrade to SNMPv3?
-
-The current implementation uses **SNMPv2c**, which has a significant security limitation: community strings, essentially passwords are transmitted in **plaintext**. Anyone sniffing network traffic can capture these credentials and all SNMP data.
+- **SNMPv3 Support** — Authentication, encryption, and message integrity to replace plaintext community strings
 
 ## Contributing
 
