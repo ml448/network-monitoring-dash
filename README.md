@@ -52,6 +52,12 @@ Four pre-configured dashboards auto-provisioned on startup:
 | **Alert History** | Triggered alerts, email delivery status, trends |
 | **Syslog Analysis** | Message search, severity distribution, facility breakdown |
 
+![Network Overview - Device Grid](images/network-overview.png)
+![Network Overview - Aggregate](images/network-overview2.png)
+![Device Details Dashboard](images/device-details.png)
+![Alert History Dashboard](images/dashboard-alert-history.png)
+![Syslog Analysis Dashboard](images/dashboard-syslog-analysis.png)
+
 ### Secured FastAPI Backend
 - **JWT Authentication**: Token-based auth with configurable expiration
 - **Password Security**: bcrypt hashing with salt
