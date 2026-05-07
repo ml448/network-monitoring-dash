@@ -12,7 +12,7 @@ A complete network monitoring stack demonstrating real-time SNMP polling, time-s
 
 This project demonstrates a complete monitoring architecture combining multiple technologies into one cohesive system:
 
-- **Real SNMP Polling** of network devices (CPU, memory, bandwidth, uptime, response time)
+- **SNMP Polling** of network devices (CPU, memory, bandwidth, uptime, response time)
 - **Time-Series Storage** in InfluxDB for historical analysis
 - **Grafana Dashboards** for real-time visualization
 - **Secured FastAPI Backend** with JWT authentication and rate limiting
