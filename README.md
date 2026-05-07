@@ -48,7 +48,7 @@ Four pre-configured dashboards auto-provisioned on startup:
 | Dashboard | Purpose |
 |-----------|---------|
 | **Network Overview** | Fleet health status, device grid, aggregate metrics |
-| **Device Details** | Per-device time-series graphs, response time tracking |
+| **Device Details** | Per-device time-series graphs, response time tracking with dropdown menu|
 | **Alert History** | Triggered alerts, email delivery status, trends |
 | **Syslog Analysis** | Message search, severity distribution, facility breakdown |
 
